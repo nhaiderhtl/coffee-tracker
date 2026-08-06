@@ -15,6 +15,7 @@ import { LogCoffee } from './pages/LogCoffee';
 import { Stats } from './pages/Stats';
 import { Badges } from './pages/Badges';
 import { Milestones } from './pages/Milestones';
+import { Challenges } from './pages/Challenges';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
@@ -89,6 +90,9 @@ export function App() {
               reached from Profile (issue #51). */}
           <Route path="/badges" element={<RequireAuth><Badges /></RequireAuth>} />
           <Route path="/milestones" element={<RequireAuth><Milestones /></RequireAuth>} />
+          {/* Community challenges are cooperative, not competitive — they left
+              Compete for their own page again (issue #63). */}
+          <Route path="/challenges" element={<RequireAuth><Challenges /></RequireAuth>} />
           {/* Scope + section live in the path (/compete/group/ranking) so a
               refresh or shared link lands on the same tab. Bare /compete
               canonicalises to the resolved default once data loads. */}
@@ -115,8 +119,9 @@ export function App() {
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />
           <Route path="/rankings" element={<Navigate to="/stats" replace />} />
-          {/* Community challenges moved to Compete (issue #51). */}
-          <Route path="/challenges" element={<Navigate to="/compete/global/challenges" replace />} />
+          {/* The stale Compete tab path, kept so old links still land on the
+              challenges (issue #63 moved them back out of Compete). */}
+          <Route path="/compete/global/challenges" element={<Navigate to="/challenges" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         {token && !isAuth && <BottomNav />}

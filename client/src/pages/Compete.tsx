@@ -13,23 +13,23 @@ import { BadgeRow } from '../components/Badge';
 import { TimezonePicker } from '../components/TimezonePicker';
 import { useAuthStore } from '../store/auth';
 import type {
-  Challenge, CompeteScope, CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
+  CompeteScope, CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
   LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, User, ImageField,
 } from '../types';
 
 // Global vs Group is the top-level split (issue #53): it scopes WHICH matches,
 // players and history the page is about. Rating itself is one global number and
 // is deliberately identical in both scopes.
-type Section = 'matches' | 'ranking' | 'history' | 'challenges' | 'preferences';
+type Section = 'matches' | 'ranking' | 'history' | 'preferences';
 
 const SECTIONS: Record<CompeteScope, { id: Section; label: string }[]> = {
   global: [
     { id: 'matches', label: 'Matches' },
     { id: 'ranking', label: 'Ranking' },
     { id: 'history', label: 'History' },
-    // Community challenges are app-wide, not group-scoped, so they live under
-    // Global (moved here from the Stats page, issue #51).
-    { id: 'challenges', label: 'Challenges' },
+    // Community challenges used to sit here (issue #51) but nothing about a
+    // shared cooperative target is competitive — they are their own page at
+    // /challenges now (issue #63).
   ],
   // Auto-join and the group's own settings are the only preferences that exist,
   // and both are group-scoped — hence no Preferences section under Global.
@@ -1282,73 +1282,6 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
   );
 }
 
-/* ── community challenges (issue #51) ────────────────────────────────────────── */
-
-const CHALLENGE_METRIC_LABEL: Record<string, string> = {
-  total_cups: 'Total Cups',
-  caffeine: 'Total Caffeine (mg)',
-  espresso_cups: 'Espresso Cups',
-  unique_types: 'Unique Coffee Types',
-};
-function challengeMetricLabel(m: string) { return CHALLENGE_METRIC_LABEL[m] ?? m; }
-function challengePct(current: number, target: number) { return Math.min(100, Math.round((current / target) * 100)); }
-
-// Everyone chipping away at one shared target. Moved here from the old Stats
-// "Challenges" tab (issue #51); personal challenges were removed entirely.
-function ChallengesSection() {
-  const qc = useQueryClient();
-
-  const { data: challenges = [], isLoading } = useQuery<Challenge[]>({
-    queryKey: ['challenges'], queryFn: () => api.get('/challenges'), refetchInterval: 60000,
-  });
-
-  const join = useMutation({
-    mutationFn: (id: string) => api.post<{ ok: boolean }>(`/challenges/${id}/join`),
-    onSuccess: () => {
-      for (const key of ['challenges', 'badges', 'achievements']) {
-        qc.invalidateQueries({ queryKey: [key] });
-      }
-    },
-  });
-
-  if (isLoading) return <div className="page-loading">Loading…</div>;
-
-  const community = challenges.filter(c => c.type === 'community');
-
-  return (
-    <>
-      <div className="field-hint">Everyone contributes to one shared target.</div>
-      {community.length === 0
-        ? <div className="cmp-empty">No community challenges right now.</div>
-        : community.map(c => {
-          const pct = challengePct(c.community_progress, c.target);
-          return (
-            <div key={c.id} className="card">
-              <div className="ch-header">
-                <div><div className="ch-name">{c.name}</div><div className="ch-desc">{c.description}</div></div>
-                <div className="ch-badge community">Community</div>
-              </div>
-              <div className="ch-progress-label">
-                <span>{challengeMetricLabel(c.metric)}</span>
-                <span>{c.community_progress.toLocaleString()} / {c.target.toLocaleString()}</span>
-              </div>
-              <div className="ch-progress-wrap"><div className="ch-progress-bar" style={{ width: `${pct}%` }} /></div>
-              <div className="ch-meta">
-                <span><Icon name="users" /> {c.participants_count} participants</span>
-                <span><Icon name="calendar" /> Ends {new Date(c.end_date).toLocaleDateString()}</span>
-              </div>
-              {c.joined ? (
-                <div className="ch-joined"><Icon name="check-circle" /> Joined · Your contribution: {c.my_progress?.toLocaleString() ?? 0}</div>
-              ) : (
-                <button className="btn-primary" onClick={() => join.mutate(c.id)} disabled={join.isPending}>Join Challenge</button>
-              )}
-            </div>
-          );
-        })}
-    </>
-  );
-}
-
 /* ── no group yet ──────────────────────────────────────────────────────────── */
 
 function GroupGate() {
@@ -1559,7 +1492,6 @@ export function Compete() {
                 {activeSection === 'history' && (
                   <HistorySection scope={activeScope} globalSettled={data.global.settled} />
                 )}
-                {activeSection === 'challenges' && <ChallengesSection />}
                 {activeSection === 'preferences' && <PreferencesSection />}
               </>
             )}

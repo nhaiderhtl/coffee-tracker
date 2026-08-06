@@ -390,6 +390,14 @@ export function Profile() {
           <Icon name="arrow-right" size={14} />
         </button>
 
+        {/* Community challenges left Compete — cooperative, not competitive
+            (issue #63) — and join Badges/Milestones as their own page. */}
+        <button className="card profile-link-card" onClick={() => navigate('/challenges')}>
+          <span className="profile-link-icon"><Icon name="users" size={18} /></span>
+          <span className="profile-link-label">Challenges</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
         {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
             way in. */}
         <button className="card profile-link-card" onClick={() => navigate('/saved')}>
