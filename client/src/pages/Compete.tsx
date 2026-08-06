@@ -444,7 +444,7 @@ function MatchStandings({ match }: { match: Match }) {
       ))}
       {/* A lobby nobody has joined would otherwise render an empty gap. */}
       {match.participants.length === 0 && (
-        <div className="cmp-side-empty">No players yet — be the first.</div>
+        <div className="cmp-side-empty">Nobody in the pot — be the first.</div>
       )}
     </div>
   );
@@ -863,7 +863,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
       <LayoutGroup>
         <div className="section-label">Live now</div>
         {live.length === 0 && openStarted.length === 0
-          ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running yet.'}</div>
+          ? <div className="cmp-empty">{global ? 'Nothing percolating globally.' : 'Nothing percolating yet.'}</div>
           /* Running matches: locked ones (pending) first, then any still-joinable
              lobby whose window has already started. */
           : <AnimatePresence initial={false}>
@@ -873,7 +873,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
 
         <div className="section-label">{global ? 'Open lobbies' : 'Waiting to start'}</div>
         {upcoming.length === 0
-          ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing waiting. Daily opens a day ahead, weekly two.'}</div>
+          ? <div className="cmp-empty">{global ? 'No global matches brewing — start one.' : 'Nothing on the drip. Daily opens a day ahead, weekly two.'}</div>
           /* Soonest first. */
           : <AnimatePresence initial={false}>{upcoming.map(joinCard)}</AnimatePresence>}
 
@@ -881,7 +881,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
           <>
             <div className="section-label">Finished</div>
             {settled.length === 0
-              ? <div className="cmp-empty">Nothing settled yet.</div>
+              ? <div className="cmp-empty">The grounds haven’t settled yet.</div>
               : <AnimatePresence initial={false}>{settled.map(m => <MatchCard key={m.id} match={m} now={now} />)}</AnimatePresence>}
           </>
         )}
@@ -958,7 +958,7 @@ function RankingSection({ scope }: { scope: CompeteScope }) {
       {scope === 'group' && <div className="field-hint">Global rank, group members only.</div>}
 
       {rows.length === 0
-        ? <div className="cmp-empty">{scope === 'global' ? 'No players yet.' : 'No members yet.'}</div>
+        ? <div className="cmp-empty">{scope === 'global' ? 'Nobody in the pot yet.' : 'Nobody in the blend yet.'}</div>
         : (
           <div className="leaderboard">
             {rows.map(r => <LeaderboardRow key={r.id} r={r} me={r.id === userId} />)}
@@ -1135,12 +1135,12 @@ function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalS
 
       <div className="section-label">Your elo changes</div>
       {changes.length === 0
-        ? <div className="cmp-empty">{global ? 'No settled global matches yet.' : 'No settled group matches yet.'}</div>
+        ? <div className="cmp-empty">{global ? 'No global grounds have settled yet.' : 'No group grounds have settled yet.'}</div>
         : <div className="cmp-hist-list">{changes.map(e => <HistoryRow key={e.match_id} e={e} />)}</div>}
 
       <div className="section-label">{global ? 'Your global matches' : 'Group history'}</div>
       {finished.length === 0
-        ? <div className="cmp-empty">No finished matches yet.</div>
+        ? <div className="cmp-empty">Nothing’s finished steeping yet.</div>
         /* Done matches only — `now` never drives a settled/cancelled card, so a
            static clock is fine here (no tick needed). */
         : finished.map(m => <MatchCard key={m.id} match={m} now={Date.now()} />)}
@@ -1433,7 +1433,7 @@ function GroupGate() {
 
       <div className="section-label">Public groups</div>
       {(data?.groups ?? []).length === 0
-        ? <div className="cmp-empty">No public groups yet — make the first one.</div>
+        ? <div className="cmp-empty">No public blends yet — start the first one.</div>
         : (data?.groups ?? []).map(g => (
           <div key={g.id} className="card cmp-group-row">
             <div>

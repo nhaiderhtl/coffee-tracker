@@ -37,7 +37,7 @@ function GalleryCard() {
         <div className="section-label">Gallery</div>
         {isLoading && <div className="gallery-loading">Loading…</div>}
         {!isLoading && photos.length === 0 && (
-          <div className="profile-placeholder-body">No photos yet — snap one when you post your next coffee.</div>
+          <div className="profile-placeholder-body">No photos yet — snap one with your next cup.</div>
         )}
         {photos.length > 0 && (
           <div className="gallery-grid">

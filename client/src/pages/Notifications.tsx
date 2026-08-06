@@ -266,7 +266,7 @@ export function Notifications() {
 
       <ul className="notif-list">
         {isLoading && <div className="notif-empty">Loading…</div>}
-        {!isLoading && list.length === 0 && <div className="notif-empty">No notifications yet.</div>}
+        {!isLoading && list.length === 0 && <div className="notif-empty">Your inbox is decaf.</div>}
         {list.map((n) => (
           <NotificationRow key={n.id} n={n} onRead={(id) => markRead.mutate({ ids: [id] })} onReveal={playOne} />
         ))}

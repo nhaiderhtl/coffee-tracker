@@ -20,7 +20,7 @@ export function Feed() {
         queryKey={['feed']}
         endpoint="/feed"
         emptyIcon="coffee"
-        emptyTitle="No posts yet"
+        emptyTitle="The pot’s empty"
         emptySub="Be the first — tap + to post a coffee and share it with everyone."
       />
     </div>

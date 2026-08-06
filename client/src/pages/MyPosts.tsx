@@ -12,7 +12,7 @@ export function MyPosts() {
         queryKey={['feed', 'mine']}
         endpoint="/feed/mine"
         emptyIcon="posts"
-        emptyTitle="No coffees yet"
+        emptyTitle="Your cup runneth under"
         emptySub="Everything you post — public or private — shows up here."
       />
     </div>

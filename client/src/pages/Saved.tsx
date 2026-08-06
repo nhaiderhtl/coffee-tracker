@@ -9,7 +9,7 @@ export function Saved() {
         queryKey={['feed', 'saved']}
         endpoint="/feed/saved"
         emptyIcon="bookmark"
-        emptyTitle="Nothing saved yet"
+        emptyTitle="Your stash is empty"
         emptySub="Tap the bookmark on any post to save it here for later."
         removeOnUnbookmark
       />
