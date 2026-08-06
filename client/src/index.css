@@ -138,7 +138,14 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
   position: sticky; top: 0; z-index: 10;
 }
-.header-brand { display: flex; align-items: center; gap: 10px; }
+/* The brand is a link to the feed (issue #79). Hover feedback is opacity only —
+   no scale pop, per the guardrail in AGENTS.md. */
+.header-brand {
+  display: flex; align-items: center; gap: 10px;
+  color: inherit; text-decoration: none; transition: opacity 0.15s;
+}
+.header-brand:hover { opacity: 0.75; }
+.header-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 .header-brand .logo { width: 1.6rem; height: 1.6rem; }
 .header-brand h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
 .header-brand .date { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }

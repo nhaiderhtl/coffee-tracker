@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore } from '../store/theme';
 import { useNotifications } from '../hooks/useNotifications';
 import { AppLogo } from './AppLogo';
@@ -7,7 +7,9 @@ import { Icon } from './Icon';
 // Single app header shared by every main page so the top bar looks identical
 // everywhere: brand on the left, actions on the right. Profile lives in the
 // bottom nav. The bell lives here so it is global with no per-page wiring —
-// AppHeader renders on every main page (issue #32).
+// AppHeader renders on every main page (issue #32). The brand is a Link to the
+// feed (issue #79) — a real <a> rather than an onClick so middle-click and
+// open-in-new-tab behave like any other link.
 export function AppHeader() {
   const { isDark, toggleDark } = useThemeStore();
   const navigate = useNavigate();
@@ -16,13 +18,13 @@ export function AppHeader() {
 
   return (
     <header className="app-header">
-      <div className="header-brand">
+      <Link to="/" className="header-brand" aria-label="Coffee Tracker home">
         <AppLogo className="logo" alt="Coffee Tracker" />
         <div>
           <h1>Coffee Tracker</h1>
           <div className="date">{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         </div>
-      </div>
+      </Link>
       <div className="header-actions">
         <button
           className="header-btn notif-bell"
