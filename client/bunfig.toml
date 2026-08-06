@@ -1,0 +1,4 @@
+[test]
+# Installs the happy-dom globals (document/window/localStorage) before any test
+# file runs, and registers the Testing Library cleanup hook.
+preload = ["./src/test/setup.ts"]

@@ -5,8 +5,11 @@
   "scripts": {
     "test": "cd server && bun test",
     "test:watch": "cd server && bun test --watch",
+    "test:client": "cd client && bun test",
+    "test:client:watch": "cd client && bun test --watch",
     "lint": "cd client && bun run lint",
+    "typecheck:test": "cd client && bun run test:types",
     "build": "cd client && bun run build",
-    "check": "bun run test && bun run lint && bun run build"
+    "check": "bun run test && bun run test:client && bun run lint && bun run typecheck:test && bun run build"
   }
 }

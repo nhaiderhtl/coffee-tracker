@@ -1,14 +1,15 @@
 {
+  /* Test-only typecheck project. Deliberately NOT referenced from
+     tsconfig.json: `bun run build` must keep building exactly the app, with no
+     bun globals in scope. Run on its own via `bun run test:types`. */
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": ["bun", "vite/client"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
-    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -16,16 +17,10 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  /* Tests live beside the code they cover but are typechecked by
-     tsconfig.test.json instead — they need bun's globals, which the app build
-     must not see. Excluding them keeps `tsc -b` (the production build) exactly
-     as it was. */
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
+  "include": ["src"]
 }
