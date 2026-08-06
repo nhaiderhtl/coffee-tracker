@@ -9,7 +9,7 @@ import {
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import { prepareImageUpload } from '../lib/image';
-import type { Coffee, CoffeeClass, CompetitionsResponse } from '../types';
+import type { Coffee, CoffeeClass, CompetitionsResponse, Stats } from '../types';
 
 type GroupSchedule = NonNullable<CompetitionsResponse['group']>;
 
@@ -62,6 +62,17 @@ export function LogCoffee() {
     queryFn: () => api.get<CompetitionsResponse>('/competitions'),
     staleTime: 60_000,
   });
+
+  // Which drinks the user has already had, so the menu can show what is still
+  // unexplored (issue #85). Several achievements and badges count unique types,
+  // and without this the menu gives no clue which ones are left. `by_type` is
+  // already keyed by coffee id and counted server-side — no new endpoint.
+  const { data: stats } = useQuery<Stats>({
+    queryKey: ['stats'],
+    queryFn: () => api.get<Stats>('/coffees/stats'),
+  });
+  const tried = stats?.by_type ?? {};
+  const triedCount = coffees.filter(c => (tried[c.id] ?? 0) > 0).length;
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -258,7 +269,12 @@ export function LogCoffee() {
         )}
 
         <div className="log-form">
-          <div className="section-label">Drink</div>
+          <div className="log-drink-head">
+            <div className="section-label">Drink</div>
+            {coffees.length > 0 && (
+              <span className="log-tried-count">{triedCount}/{coffees.length} tried</span>
+            )}
+          </div>
           {/* The menu is the server's now, so it can be missing. An empty grid
               under "Pick a coffee type to continue" is a dead end that blames
               the user for a failed fetch — say what happened and offer a retry. */}
@@ -284,17 +300,24 @@ export function LogCoffee() {
                 <div className="coffee-class" key={cls}>
                   <div className="coffee-class-label">{labelOf(cls)}</div>
                   <div className="coffee-grid">
-                    {coffees.filter(c => c.class === cls).map(c => (
-                      <button
-                        key={c.id}
-                        className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
-                        onClick={() => setSelectedId(c.id)}
-                      >
-                        <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
-                        <span className="cb-name">{c.name}</span>
-                        <span className="cb-mg">{c.caffeine}mg</span>
-                      </button>
-                    ))}
+                    {coffees.filter(c => c.class === cls).map(c => {
+                      const isTried = (tried[c.id] ?? 0) > 0;
+                      return (
+                        <button
+                          key={c.id}
+                          className={`coffee-btn${isTried ? ' tried' : ''}${selectedId === c.id ? ' selected' : ''}`}
+                          onClick={() => setSelectedId(c.id)}
+                          title={isTried ? `${c.name} — already tried` : `${c.name} — not tried yet`}
+                        >
+                          {/* Colour alone would not survive a colour-vision
+                              deficiency, so the state carries a glyph too. */}
+                          {isTried && <span className="cb-tried" aria-hidden="true"><Icon name="check" size={9} /></span>}
+                          <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
+                          <span className="cb-name">{c.name}</span>
+                          <span className="cb-mg">{c.caffeine}mg</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 ));

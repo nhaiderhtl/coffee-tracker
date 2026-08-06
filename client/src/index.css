@@ -172,16 +172,31 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 @media (min-width: 540px)  { .coffee-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (min-width: 720px)  { .coffee-grid { grid-template-columns: repeat(7, 1fr); } }
 .coffee-btn {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
   padding: 14px 6px 12px; background: var(--surface2); border: 1.5px solid var(--border);
   border-radius: 10px; cursor: pointer; color: var(--text-primary);
   transition: background 0.15s, border-color 0.15s;
+}
+/* A drink already tried (issue #85). Untried keeps the plain --surface2 look
+   deliberately: the useful question is which ones are LEFT, so those stay
+   prominent rather than being dimmed into looking disabled.
+   Declared before .selected and :hover — equal specificity, so source order is
+   what keeps selection and hover winning over this. */
+.coffee-btn.tried { background: var(--success-bg); border-color: var(--success-bd); }
+.cb-tried {
+  position: absolute; top: 4px; right: 4px; line-height: 1;
+  color: var(--success-fg);
 }
 .coffee-btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); }
 .coffee-btn.selected { background: var(--accent-bg); border-color: var(--accent); }
 .coffee-btn:active { background: var(--accent-bg); }
 .coffee-btn:disabled { opacity: 0.6; cursor: default; }
 .cb-icon { font-size: 1.6rem; line-height: 1; }
+/* Sits on the "Drink" label row so the tried/untried colours are decodable
+   without a legend paragraph (VALUES.md 0.6). */
+.log-drink-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.log-tried-count { font-size: 0.68rem; color: var(--text-muted); font-weight: 600; }
 .cb-name { font-size: 0.67rem; font-weight: 600; text-align: center; line-height: 1.25; }
 .cb-mg   { font-size: 0.62rem; color: var(--text-muted); }
 
