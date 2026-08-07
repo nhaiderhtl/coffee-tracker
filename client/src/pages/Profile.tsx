@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
@@ -183,161 +183,6 @@ function ChangePasswordCard() {
   );
 }
 
-interface AdminUser {
-  id: string;
-  username: string;
-  avatar: string;
-  is_admin: 0 | 1;
-  is_super_admin: 0 | 1;
-  created_at: number;
-}
-
-// Actions on the found user: set a new password, and toggle admin. Its own
-// state so a lookup of a new user starts these controls clean. Controls are
-// shown only when the current admin is allowed to use them — the server
-// enforces the same rules, this just avoids offering a button that would 403.
-function AdminActions({ u }: { u: AdminUser }) {
-  const qc = useQueryClient();
-  const meIsSuper = useAuthStore(s => s.user?.is_super_admin === 1);
-  const [pw, setPw] = useState('');
-  const [msg, setMsg] = useState('');
-  const [error, setError] = useState('');
-
-  // Reset the local controls whenever the found user changes.
-  useEffect(() => { setPw(''); setMsg(''); setError(''); }, [u.id]);
-
-  const resetMutation = useMutation({
-    mutationFn: (password: string) => api.post(`/admin/users/${u.id}/reset-password`, { password }),
-    onSuccess: () => {
-      setPw(''); setError(''); setMsg('Password set');
-      setTimeout(() => setMsg(''), 3000);
-    },
-    onError: (e: Error) => { setMsg(''); setError(e.message); },
-  });
-
-  const adminMutation = useMutation({
-    mutationFn: (is_admin: boolean) => api.post(`/admin/users/${u.id}/admin`, { is_admin }),
-    // Refetch the lookup so the admin tag reflects the new state.
-    onSuccess: () => { setError(''); qc.invalidateQueries({ queryKey: ['admin-user', u.username] }); },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  function submitReset(e: React.FormEvent) {
-    e.preventDefault();
-    if (pw.length === 0) { setError('Enter a new password.'); return; }
-    resetMutation.mutate(pw);
-  }
-
-  // Permission model (mirrors routes/admin.js): the protected primary admin is
-  // untouchable by anyone; managing any other admin (resetting their password
-  // or demoting them) needs super; a non-admin is open to any admin — including
-  // promoting them. Both actions share the same gate.
-  const targetIsSuper = u.is_super_admin === 1;
-  const targetIsAdmin = u.is_admin === 1;
-  const canManage = !targetIsSuper && (targetIsAdmin ? meIsSuper : true);
-
-  return (
-    <div className="card">
-      <div className="admin-user-head">
-        <div className="admin-user-id">
-          <span className="admin-user-avatar">{u.avatar}</span>
-          <span className="admin-user-name">{u.username}</span>
-          {targetIsSuper
-            ? <span className="admin-tag">Primary admin</span>
-            : targetIsAdmin ? <span className="admin-tag">Admin</span> : null}
-        </div>
-        {canManage && (
-          <button
-            className="btn-secondary"
-            onClick={() => adminMutation.mutate(!u.is_admin)}
-            disabled={adminMutation.isPending}
-          >
-            {targetIsAdmin ? 'Remove admin' : 'Make admin'}
-          </button>
-        )}
-      </div>
-
-      {canManage ? (
-        <>
-          <div className="section-label" style={{ marginTop: 16 }}>Reset password</div>
-          <form onSubmit={submitReset} className="search-row">
-            <input
-              type="text"
-              className="search-input"
-              value={pw}
-              onChange={e => setPw(e.target.value)}
-              placeholder="New password"
-              autoComplete="off"
-            />
-            <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }} disabled={resetMutation.isPending}>
-              {resetMutation.isPending ? 'Setting…' : 'Set'}
-            </button>
-          </form>
-        </>
-      ) : (
-        <div className="empty-state" style={{ marginTop: 12, textAlign: 'left' }}>
-          {targetIsSuper ? 'Protected admin — cannot be modified.' : 'Only the primary admin can manage other admins.'}
-        </div>
-      )}
-      {msg && <div className="pw-success" style={{ marginTop: 8 }}>{msg}</div>}
-      {error && <div className="auth-error" style={{ marginTop: 8 }}>{error}</div>}
-    </div>
-  );
-}
-
-// Admin-only section. Search a single user by username (like the Compare page)
-// and act on them — never a full user list. Rendered only when the current user
-// is an admin (guard at the call site); the endpoints also enforce it.
-function AdminCard() {
-  const navigate = useNavigate();
-  const meIsSuper = useAuthStore(s => s.user?.is_super_admin === 1);
-  const [searchInput, setSearchInput] = useState('');
-  const [activeUsername, setActiveUsername] = useState('');
-
-  const { data, isLoading, error } = useQuery<AdminUser>({
-    queryKey: ['admin-user', activeUsername],
-    queryFn: () => api.get<AdminUser>(`/admin/users/${activeUsername}`),
-    enabled: !!activeUsername,
-    retry: false,
-  });
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const q = searchInput.trim();
-    if (q) setActiveUsername(q);
-  }
-
-  return (
-    <>
-      <div className="card">
-        <div className="section-label">Admin</div>
-        <form onSubmit={handleSearch} className="search-row">
-          <input
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="Find a user by username…"
-            className="search-input"
-          />
-          <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Find</button>
-        </form>
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <button className="btn-secondary" style={{ flex: 1, width: 'auto', minWidth: 'max-content' }} onClick={() => navigate('/admin/coffees')}>
-            Manage coffee catalog
-          </button>
-          {meIsSuper && (
-            <button className="btn-secondary" style={{ flex: 1, width: 'auto', minWidth: 'max-content' }} onClick={() => navigate('/admin/matches')}>
-              Manage matches
-            </button>
-          )}
-        </div>
-      </div>
-
-      {isLoading && <div className="page-loading">Searching…</div>}
-      {error && <div className="card error-card">{(error as Error).message}</div>}
-      {data && <AdminActions u={data} />}
-    </>
-  );
-}
 
 function DeleteAccountSection({ onDeleted }: { onDeleted: () => void }) {
   const [confirming, setConfirming] = useState(false);
@@ -557,7 +402,13 @@ export function Profile() {
 
         <ChangePasswordCard />
 
-        {user?.is_admin ? <AdminCard /> : null}
+        {user?.is_admin ? (
+          <button className="card profile-link-card" onClick={() => navigate('/admin')}>
+            <span className="profile-link-icon"><Icon name="shield" size={18} /></span>
+            <span className="profile-link-label">Admin panel</span>
+            <Icon name="arrow-right" size={14} />
+          </button>
+        ) : null}
 
         <DebugCard />
 

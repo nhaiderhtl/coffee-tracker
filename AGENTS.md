@@ -256,6 +256,19 @@ also unlocked, reveal their how-to. (On the badge *collection* page an
 undiscovered secret is still a masked `???` with no description — that is the
 owner's view of a badge they don't have yet.)
 
+### Consult the user before placing any new admin feature
+
+The admin panel lives at `/admin` (issue #68). Inline actions that operate
+directly on content in context — like a delete-post button on a post — may
+stay where they appear. Anything that is a *management* action (user controls,
+configuration, bulk operations, catalog edits) belongs in the admin panel or a
+sub-page under `/admin/`.
+
+**Before writing any code for a new admin feature:** stop and present at least
+two concrete placement options to the user (which page/section it would live
+in, what the UI entry point would be). The user decides. Do **not** infer a
+location and implement it; the outcome must be explicit before you start.
+
 ### Consult the user before adding any new notification
 
 When a new feature would fire a **new** notification, do **not** decide its shape
