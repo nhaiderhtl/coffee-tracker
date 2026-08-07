@@ -27,7 +27,6 @@ function RankingsTab() {
   const { data, isLoading } = useQuery<RankingsResponse>({
     queryKey: ['rankings', period],
     queryFn: () => api.get(`/rankings?period=${period}`),
-    refetchInterval: 60000,
   });
 
   const { data: casualties } = useQuery({
@@ -118,7 +117,7 @@ export function Stats() {
   const [activeTab, setActiveTab] = useState<Tab>('rankings');
 
   const { data: stats } = useQuery<StatsData>({
-    queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'), refetchInterval: 30000,
+    queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'),
   });
   const { data: streaks } = useQuery<StreaksResponse>({
     queryKey: ['streaks'], queryFn: () => api.get('/streaks'),

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
+import { useSSE } from './hooks/useSSE';
 // Animated caffeine background disabled for now — kept in the tree for later.
 // import { BgCanvas } from './components/BgCanvas';
 import { BottomNav } from './components/BottomNav';
@@ -65,6 +66,8 @@ export function App() {
       api.patch<User>('/auth/me', { timezone: tz }).then(u => setAuth(u, token)).catch(() => {});
     }
   }, [user, token, setAuth]);
+
+  useSSE();
 
   const isAuth = location.pathname === '/auth';
 

@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const db = require('./db');
+const { broadcast } = require('./events');
 
 // The one writer for the notifications table (issue #32). A notification is an
 // immutable event: this module only ever INSERTs. Nothing here (or anywhere)
@@ -34,6 +35,7 @@ function createNotification(userId, type, payload) {
   db.prepare(
     'INSERT INTO notifications (id, user_id, type, payload, read_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)'
   ).run(id, userId, type, JSON.stringify(payload), Date.now());
+  broadcast([['notifications']], [userId]);
   return id;
 }
 

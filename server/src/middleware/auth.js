@@ -20,6 +20,23 @@ function requireAuth(req, res, next) {
   }
 }
 
+// EventSource cannot set headers, so SSE auth accepts the token via the `token`
+// query parameter in addition to the standard Authorization header. Same
+// verification logic — only the extraction differs.
+function requireAuthSSE(req, res, next) {
+  const header = req.headers.authorization;
+  const raw = header && header.startsWith('Bearer ')
+    ? header.slice(7).trim()
+    : (typeof req.query.token === 'string' ? req.query.token : '');
+  if (!raw) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    req.user = jwt.verify(raw, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // Admin gate. Composes requireAuth, then reads the actor's row LIVE from the DB
 // rather than trusting the token: the JWT carries only id/username (see makeToken
 // in routes/auth.js), and reading fresh means a demoted admin loses access on the
@@ -36,4 +53,4 @@ function requireAdmin(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAuthSSE, requireAdmin };

@@ -2,17 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { AppNotification, NotificationsResponse } from '../types';
 
-// Polling is a stopgap (issue #32 §7): when #54 (live data over websockets/SSE)
-// lands, this 60s interval should be replaced by a push over that connection so
-// the bell updates on server event instead of on a timer. This hook is the
-// single revisit point for that swap.
-const POLL_MS = 60_000;
-
 export function useNotifications(enabled = true) {
   return useQuery<NotificationsResponse>({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications'),
-    refetchInterval: POLL_MS,
     refetchOnWindowFocus: true,
     enabled,
   });

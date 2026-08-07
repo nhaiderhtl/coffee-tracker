@@ -19,6 +19,7 @@ const {
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
 const { scoreMgSql } = require('./coffees');
 const { createNotification, TYPES } = require('./notifications');
+const { broadcast } = require('./events');
 
 // How often the ticker looks for work. A match settles on the first tick after
 // its window closes, so this is also the worst-case settlement lag.
@@ -483,6 +484,11 @@ function settleMatch(match, now = Date.now()) {
     }
     db.prepare("UPDATE matches SET state = 'settled', settled_at = ? WHERE id = ?").run(now, match.id);
   })();
+
+  // Tell participants their competition and ranking data are stale. Notifications
+  // were already pushed inside the transaction via createNotification → broadcast.
+  const participantIds = players.map((p) => p.userId);
+  broadcast([['competitions'], ['rankings']], participantIds);
 }
 
 function settleDueMatches(now = Date.now()) {

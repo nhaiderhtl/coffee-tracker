@@ -1047,7 +1047,6 @@ function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalS
   const { data, isLoading } = useQuery<CompetitionHistoryResponse>({
     queryKey: ['competitions', 'history'],
     queryFn: () => api.get('/competitions/history'),
-    refetchInterval: 60000,
   });
 
   if (isLoading || !data) return <div className="page-loading">Loading…</div>;
@@ -1472,9 +1471,6 @@ export function Compete() {
   const { data, isLoading } = useQuery<CompetitionsResponse>({
     queryKey: ['competitions'],
     queryFn: () => api.get('/competitions'),
-    // Matches are opened and settled by the server on a wall-clock schedule, so
-    // an open page has to re-read rather than wait for an interaction.
-    refetchInterval: 60000,
   });
 
   const hasGroup = !!data?.group;

@@ -8,6 +8,7 @@ const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { listCoffees, getCoffee, listClasses } = require('../coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
+const { broadcast } = require('../events');
 const { DATE_RE } = require('./_helpers');
 const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../time');
 
@@ -208,6 +209,11 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async
   // as a notification inside these functions now and reaches the client through
   // the bell, so the response no longer carries an `unlocked` array (issue #32).
   checkAfterCoffeeLog(req.user.id);
+
+  // Tell every connected client the feed is stale, and tell the author that
+  // their personal stats (streaks, energy, rankings, stats) may have changed.
+  broadcast([['feed']]);
+  broadcast([['streaks'], ['energy'], ['stats'], ['rankings']], [req.user.id]);
 
   const entry = {
     id, user_id: req.user.id, coffee_id: coffeeId, caffeine_mg: coffee.caffeine,

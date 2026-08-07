@@ -101,6 +101,12 @@ app.get('/uploads/:filename', (req, res) => {
   res.sendFile(path.join(UPLOAD_DIR, filename));
 });
 
+// SSE endpoint: clients open one long-lived connection per tab and receive
+// `invalidate` events telling them which React Query keys to refetch.
+const { requireAuthSSE } = require('./middleware/auth');
+const { sseHandler }     = require('./events');
+app.get('/api/events', requireAuthSSE, sseHandler);
+
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/admin',       require('./routes/admin'));

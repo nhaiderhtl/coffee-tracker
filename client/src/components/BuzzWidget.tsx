@@ -306,7 +306,6 @@ export function BuzzWidget() {
   const { data, isLoading, error } = useQuery<EnergyResponse>({
     queryKey: ['energy', hours],
     queryFn: () => api.get(`/energy?hours=${hours}`),
-    refetchInterval: 60000,
   });
 
   return (
