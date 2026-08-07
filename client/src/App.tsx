@@ -23,6 +23,7 @@ import { UserProfile } from './pages/UserProfile';
 import { AdminCoffees } from './pages/AdminCoffees';
 import { AdminMatches } from './pages/AdminMatches';
 import { AdminPanel } from './pages/AdminPanel';
+import { HallOfFame } from './pages/HallOfFame';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
 import { RevealProvider } from './notifications/RevealProvider';
@@ -115,6 +116,8 @@ export function App() {
               redirects non-super-admins; the API enforces super-admin on the
               invalidate write regardless. */}
           <Route path="/admin/matches" element={<RequireAuth><AdminMatches /></RequireAuth>} />
+          {/* Top-liked posts of the last 30 days (issue #58), linked from Feed. */}
+          <Route path="/hall-of-fame" element={<RequireAuth><HallOfFame /></RequireAuth>} />
           <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />

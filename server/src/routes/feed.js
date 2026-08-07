@@ -112,6 +112,37 @@ router.get('/mine', requireAuth, (req, res) => {
   res.json(mapPosts(posts, req.user.id));
 });
 
+// Hall of Fame: public posts from the last 30 days that meet a dynamic
+// like threshold. The threshold is max(1, floor(avg likes per post in
+// the window)), so it scales up automatically as the community grows —
+// a quiet week keeps the bar at 1, a busy month raises it.
+router.get('/hall-of-fame', requireAuth, (req, res) => {
+  const posts = db.prepare(`
+    SELECT ${POST_COLUMNS}
+    FROM coffee_entries e
+    JOIN users u ON e.user_id = u.id
+    LEFT JOIN post_likes pl ON pl.entry_id = e.id
+    WHERE e.is_public = 1
+      AND e.logged_at >= (unixepoch('now', '-30 days') * 1000)
+    GROUP BY e.id
+    HAVING COUNT(pl.id) >= (
+      SELECT MAX(1, CAST(AVG(like_count) AS INTEGER))
+      FROM (
+        SELECT COUNT(pl2.id) AS like_count
+        FROM coffee_entries e2
+        LEFT JOIN post_likes pl2 ON pl2.entry_id = e2.id
+        WHERE e2.is_public = 1
+          AND e2.logged_at >= (unixepoch('now', '-30 days') * 1000)
+        GROUP BY e2.id
+      )
+    )
+    ORDER BY COUNT(pl.id) DESC
+    LIMIT 30
+  `).all(req.user.id, req.user.id);
+
+  res.json(mapPosts(posts, req.user.id));
+});
+
 router.post('/:entryId/like', requireAuth, (req, res) => {
   const entry = db.prepare(
     'SELECT id, user_id FROM coffee_entries WHERE id = ? AND is_public = 1'
