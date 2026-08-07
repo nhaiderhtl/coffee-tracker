@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
@@ -7,73 +7,15 @@ import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { CompareContent } from './Compare';
 import type {
-  GoalsResponse, StreaksResponse,
-  RankingEntry, Stats as StatsData, Task,
+  StreaksResponse,
+  RankingEntry, Stats as StatsData,
 } from '../types';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 interface RankingsResponse { rankings: RankingEntry[]; my_rank: RankingEntry | null; }
 
-type Tab = 'goals' | 'rankings' | 'compare';
-
-// ── Tab: Goals ────────────────────────────────────────────────────────────────
-
-function GoalsTab() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery<GoalsResponse>({
-    queryKey: ['goals'], queryFn: () => api.get('/goals/today'), refetchInterval: 30000,
-  });
-  const completeMutation = useMutation({
-    mutationFn: () => api.post<{ tasks: Task[]; allDone: boolean }>('/goals/complete'),
-    onSuccess: () => {
-      for (const key of ['goals', 'streaks', 'badges', 'achievements']) {
-        qc.invalidateQueries({ queryKey: [key] });
-      }
-    },
-  });
-
-  if (isLoading) return <div className="page-loading">Loading goals…</div>;
-  if (!data) return null;
-  const allDone = data.tasks.every(t => t.completed);
-  const doneCount = data.tasks.filter(t => t.completed).length;
-  const pct = data.tasks.length ? (doneCount / data.tasks.length) * 100 : 0;
-
-  return (
-    <div className="stats-tab-body">
-      <div className="card">
-        <div className="section-label">Today's Goals — {doneCount}/{data.tasks.length}</div>
-        <div className="progress-bar-wrap">
-          <div className="progress-bar" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="task-list">
-          {data.tasks.map(task => (
-            <div key={task.id} className={`task-item${task.completed ? ' done' : ''}`}>
-              <div className="task-check"><Icon name={task.completed ? 'check-circle' : 'square-empty'} /></div>
-              <span className="task-icon"><Icon name={task.icon} /></span>
-              <span className="task-label">{task.label}</span>
-            </div>
-          ))}
-        </div>
-        {allDone ? (
-          <div className="goals-complete-banner"><Icon name="trophy" /> All goals completed! Streak extended!</div>
-        ) : (
-          <button className="btn-primary" style={{ marginTop: 16 }}
-            onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
-            {completeMutation.isPending ? 'Checking…' : 'Check Progress'}
-          </button>
-        )}
-      </div>
-      <div className="card">
-        <div className="section-label">How goals work</div>
-        <p style={{ fontSize: '0.82rem', color: 'var(--text-sec)', lineHeight: 1.6 }}>
-          You get 2 compatible tasks each day. Complete them both to extend your streak. Tasks
-          evaluate automatically based on the coffees you post today — just post your coffees and check back!
-        </p>
-      </div>
-    </div>
-  );
-}
+type Tab = 'rankings' | 'compare';
 
 // ── Tab: Rankings ─────────────────────────────────────────────────────────────
 
@@ -173,7 +115,7 @@ function RankingsTab() {
 // ── Main Stats page ───────────────────────────────────────────────────────────
 
 export function Stats() {
-  const [activeTab, setActiveTab] = useState<Tab>('goals');
+  const [activeTab, setActiveTab] = useState<Tab>('rankings');
 
   const { data: stats } = useQuery<StatsData>({
     queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'), refetchInterval: 30000,
@@ -189,10 +131,7 @@ export function Stats() {
   const pct = todayCaf / 400;
   const safeColor = !todayCaf ? 'var(--text-muted)' : pct < 0.75 ? '#4CAF50' : pct < 1 ? '#FF9800' : '#E53935';
 
-  // Badges and Challenges left this row (issue #51): Badges + Milestones are
-  // their own pages off Profile now, and community challenges moved to Compete.
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'goals',      label: 'Goals',      icon: 'target' },
     { id: 'rankings',   label: 'Rankings',   icon: 'trophy' },
     { id: 'compare',    label: 'Compare',    icon: 'scale' },
   ];
@@ -247,7 +186,6 @@ export function Stats() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'goals'    && <GoalsTab />}
       {activeTab === 'rankings' && <RankingsTab />}
       {activeTab === 'compare'  && <div className="stats-tab-body"><CompareContent /></div>}
     </div>
