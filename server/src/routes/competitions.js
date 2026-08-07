@@ -53,10 +53,14 @@ router.get('/', requireAuth, (req, res) => {
     groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled' || m.state === 'invalidated').map((m) => matchPayload(m, { viewerId: req.user.id }));
   }
 
-  // Open global lobbies are browsable by anyone; a caller's running/finished
-  // global matches follow them regardless of any group they are or aren't in.
-  const globalOpen = db.prepare("SELECT * FROM matches WHERE group_id IS NULL AND state = 'open' ORDER BY scope_start DESC LIMIT 60")
-    .all();
+  // Open global lobbies visible to this user: public ones (no join_code) plus
+  // any private lobby the viewer created (so they can see their own match).
+  const globalOpen = db.prepare(`
+    SELECT * FROM matches
+    WHERE group_id IS NULL AND state = 'open'
+      AND (join_code IS NULL OR creator_id = ?)
+    ORDER BY scope_start DESC LIMIT 60
+  `).all(req.user.id);
   const globalMine = db.prepare(`
     SELECT m.* FROM matches m
     JOIN match_participants p ON p.match_id = m.id
@@ -224,22 +228,53 @@ router.post('/', requireAuth, (req, res) => {
   if (duration > MAX_DURATION_MS) return res.status(400).json({ error: 'A match can run for at most 90 days' });
 
   const id = randomUUID();
+  // Global user-created matches are private by default: a 6-char code is
+  // generated and only returned to the creator. Group matches stay members-only
+  // and don't need a code.
+  const joinCode = isGlobal ? randomUUID().slice(0, 6).toUpperCase() : null;
+
   // `team_size` and `side` stay in the schema because settled team matches hold
   // real data in them, but team mode is gone (v2) and a new match never fills
   // them in.
   db.transaction(() => {
     db.prepare(`
       INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
-                           scope_start, scope_end, state, k_factor, team_size, created_at)
-      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'open', ?, NULL, ?)
+                           scope_start, scope_end, state, k_factor, team_size, created_at, join_code)
+      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'open', ?, NULL, ?, ?)
     `).run(id, groupId, mode, title ? title.trim() : null, req.user.id,
-      scope_start, scope_end, K_BY_MODE[mode], now);
+      scope_start, scope_end, K_BY_MODE[mode], now, joinCode);
 
     db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
       .run(randomUUID(), id, req.user.id, now);
   })();
 
   res.status(201).json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(id), { viewerId: req.user.id }) });
+});
+
+// POST /api/competitions/join-by-code — look up a private match by its join
+// code and enter it. The code is case-insensitive; the same join rules apply
+// as for /:id/join (state, deadline, roster cap, etc.).
+router.post('/join-by-code', requireAuth, (req, res) => {
+  const raw = req.body?.code;
+  if (!raw || typeof raw !== 'string') return res.status(400).json({ error: 'code is required' });
+  const code = raw.trim().toUpperCase();
+  const match = db.prepare("SELECT * FROM matches WHERE join_code = ? AND state = 'open'").get(code);
+  if (!match) return res.status(404).json({ error: 'No open match found with that code' });
+  if (joinDeadline(match) <= Date.now()) return res.status(409).json({ error: 'This match is no longer open to join' });
+
+  const already = db.prepare('SELECT 1 FROM match_participants WHERE match_id = ? AND user_id = ?')
+    .get(match.id, req.user.id);
+  if (already) return res.status(409).json({ error: 'You are already in this match' });
+
+  const current = db.prepare('SELECT user_id FROM match_participants WHERE match_id = ?').all(match.id);
+  if (match.mode === '1v1' && current.length >= 2) {
+    return res.status(409).json({ error: 'This match already has both players' });
+  }
+
+  db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
+    .run(randomUUID(), match.id, req.user.id, Date.now());
+
+  res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id), { viewerId: req.user.id }) });
 });
 
 // POST /api/competitions/:id/join — take a slot in an open lobby.
@@ -252,11 +287,17 @@ router.post('/:id/join', requireAuth, (req, res) => {
   // deadline IS the start instant, so this behaves exactly as before.
   if (joinDeadline(match) <= Date.now()) return res.status(409).json({ error: 'This match is no longer open to join' });
 
-  // A group match is members-only; a global match (no group) is open to anyone.
+  // A group match is members-only; a global match with a join_code requires
+  // the code (private by default). A global match without a code is open.
   if (match.group_id !== null) {
     const group = groupOf(req.user.id);
     if (!group || group.id !== match.group_id) {
       return res.status(403).json({ error: 'This match belongs to another group' });
+    }
+  } else if (match.join_code !== null && match.creator_id !== req.user.id) {
+    const provided = typeof req.body?.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+    if (provided !== match.join_code) {
+      return res.status(403).json({ error: 'Invalid join code' });
     }
   }
 

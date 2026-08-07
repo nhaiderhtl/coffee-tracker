@@ -1633,6 +1633,11 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .cmp-form { display: flex; flex-direction: column; gap: 14px; }
 .cmp-form-actions { display: flex; gap: 8px; }
 .cmp-form-actions > button { flex: 1; }
+.cmp-action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cmp-action-row > button { flex: 1; min-width: 120px; }
+.cmp-join-code-display { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--accent-bg); border: 1.5px solid var(--accent); border-radius: 10px; }
+.cmp-join-code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.15em; color: var(--accent); flex: 1; text-align: center; }
+.cmp-copy-btn { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .cmp-mode-picker { display: flex; gap: 6px; flex-wrap: wrap; }
 .cmp-mode-opt {
   display: flex; align-items: center; gap: 5px;

@@ -490,32 +490,52 @@ test('a global match needs no group, carries a null group_id, and rosters its cr
   expect(match.participants.map((p) => p.user_id)).toEqual([a.id]);
 });
 
-test('anyone may read and join a global match, whatever group they are in', async () => {
+test('global matches are private by default — require a code to join (issue #36)', async () => {
   const a = makeUser('a');
   const drifter = makeUser('drifter');   // no group at all
   const outsider = makeUser('outsider');
   await createGroup(outsider);           // in an unrelated group
 
   const match = await globalLobby(a);
-  // The group-match gate that 403s an outsider (see above) does not apply here.
+  // Anyone can still READ the match by ID.
   expect((await get(drifter, `/api/competitions/${match.id}`)).status).toBe(200);
-  expect((await post(drifter, `/api/competitions/${match.id}/join`)).status).toBe(200);
-  expect((await post(outsider, `/api/competitions/${match.id}/join`)).status).toBe(200);
+  // Joining without the code is rejected.
+  expect((await post(drifter, `/api/competitions/${match.id}/join`)).status).toBe(403);
+  // Joining with the wrong code is also rejected.
+  expect((await post(drifter, `/api/competitions/${match.id}/join`, { code: 'WRONG1' })).status).toBe(403);
+  // The creator's response includes the join_code; joining with it succeeds.
+  const code = match.join_code;
+  expect(typeof code).toBe('string');
+  expect((await post(drifter, `/api/competitions/${match.id}/join`, { code })).status).toBe(200);
+  expect((await post(outsider, `/api/competitions/${match.id}/join`, { code })).status).toBe(200);
 });
 
-test('global matches surface in the global bucket: open to all, live only to participants', async () => {
+test('join-by-code looks up a private match and joins it', async () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const match = await globalLobby(a);
+  const code = match.join_code;
+
+  expect((await post(b, '/api/competitions/join-by-code', { code })).status).toBe(200);
+  // Using a bad code returns 404.
+  const c = makeUser('c');
+  expect((await post(c, '/api/competitions/join-by-code', { code: 'NOCODE' })).status).toBe(404);
+});
+
+test('private global matches are hidden from non-creators in the open bucket', async () => {
   const a = makeUser('a');
   const drifter = makeUser('drifter');
   const match = await globalLobby(a);
 
-  // A caller in no group still sees every open global lobby to browse...
+  // A non-creator cannot see the private lobby in the open bucket.
   const seen = await get(drifter, '/api/competitions');
-  expect(seen.body.global.open.map((m) => m.id)).toContain(match.id);
-  // ...but a lobby they have not joined is not in their live bucket.
-  expect(seen.body.global.live).toEqual([]);
+  expect(seen.body.global.open.map((m) => m.id)).not.toContain(match.id);
+  // The creator does see it.
+  const mine = await get(a, '/api/competitions');
+  expect(mine.body.global.open.map((m) => m.id)).toContain(match.id);
 
-  // Once running it shows in the live bucket of everyone on its roster.
-  await post(drifter, `/api/competitions/${match.id}/join`);
+  // Once joined via code and running, it shows in the live bucket of everyone on the roster.
+  await post(drifter, `/api/competitions/${match.id}/join`, { code: match.join_code });
   db.prepare("UPDATE matches SET state = 'pending' WHERE id = ?").run(match.id);
   expect((await get(drifter, '/api/competitions')).body.global.live.map((m) => m.id)).toContain(match.id);
   expect((await get(a, '/api/competitions')).body.global.live.map((m) => m.id)).toContain(match.id);

@@ -652,6 +652,8 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
   const [start, setStart] = useState(() => toLocalInput(Date.now() + HOUR));
   const [end, setEnd] = useState(() => toLocalInput(Date.now() + 25 * HOUR));
   const [error, setError] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const create = useMutation({
     mutationFn: () => api.post<{ match: Match }>('/competitions', {
@@ -661,12 +663,36 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
       scope_end: new Date(end).getTime(),
       ...(global ? { global: true } : {}),
     }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['competitions'] });
-      onDone();
+      if (data?.match?.join_code) {
+        setJoinCode(data.match.join_code);
+      } else {
+        onDone();
+      }
     },
     onError: (e: Error) => setError(e.message),
   });
+
+  if (joinCode) {
+    return (
+      <div className="card cmp-form">
+        <div className="section-label">Match created!</div>
+        <p className="field-hint">Share this code with your opponent — they'll need it to join.</p>
+        <div className="cmp-join-code-display">
+          <span className="cmp-join-code">{joinCode}</span>
+          <button
+            className="btn-secondary cmp-copy-btn"
+            onClick={async () => { await copyText(joinCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          >
+            {copied ? <Icon name="check-circle" size={14} /> : <Icon name="copy" size={14} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <button className="btn-primary" style={{ marginTop: 8 }} onClick={onDone}>Done</button>
+      </div>
+    );
+  }
 
   return (
     <div className="card cmp-form">
@@ -704,6 +730,8 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
         <div className="field-hint">Max 90 days. Settles when it ends.</div>
       </div>
 
+      {global && <div className="field-hint"><Icon name="lock" size={12} /> Match is private — your opponent joins with the code you'll receive after creating.</div>}
+
       {error && <div className="auth-error">{error}</div>}
 
       <div className="cmp-form-actions">
@@ -736,11 +764,44 @@ function RatingCard({ rating, matches }: { rating: number; matches: number }) {
 // `finished` shows the settled column. The group tab turns it off because its
 // finished matches live in the History tab instead (issue #34); the global tab
 // has no history pill, so it keeps its own finished list inline.
+function JoinByCodeCard({ onSuccess }: { onSuccess: () => void }) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const join = useMutation({
+    mutationFn: () => api.post<{ match: Match }>('/competitions/join-by-code', { code: code.trim().toUpperCase() }),
+    onSuccess,
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <div className="card cmp-form">
+      <div className="section-label"><Icon name="lock" size={14} /> Join a private match</div>
+      <div className="field">
+        <input
+          className="search-input"
+          value={code}
+          onChange={e => setCode(e.target.value.toUpperCase())}
+          placeholder="Enter 6-character code"
+          maxLength={6}
+        />
+      </div>
+      {error && <div className="auth-error">{error}</div>}
+      <button
+        className="btn-primary"
+        onClick={() => { setError(null); join.mutate(); }}
+        disabled={!code.trim() || join.isPending}
+      >
+        {join.isPending ? 'Joining…' : 'Join by code'}
+      </button>
+    </div>
+  );
+}
+
 function MatchList({ open, live, settled, global = false, finished = true }: {
   open: Match[]; live: Match[]; settled: Match[]; global?: boolean; finished?: boolean;
 }) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [joiningByCode, setJoiningByCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['competitions'] });
@@ -780,10 +841,19 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
 
       {creating
         ? <NewMatchForm global={global} onDone={() => setCreating(false)} />
+        : joiningByCode
+        ? <JoinByCodeCard onSuccess={() => { setJoiningByCode(false); refresh(); }} />
         : (
-          <button className="btn-primary cmp-new-btn" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={14} /> New match
-          </button>
+          <div className="cmp-action-row">
+            <button className="btn-primary cmp-new-btn" onClick={() => setCreating(true)}>
+              <Icon name="plus" size={14} /> New match
+            </button>
+            {global && (
+              <button className="btn-secondary cmp-new-btn" onClick={() => setJoiningByCode(true)}>
+                <Icon name="lock" size={14} /> Join by code
+              </button>
+            )}
+          </div>
         )}
 
       {/* One LayoutGroup so a card keeps its layoutId identity while it moves

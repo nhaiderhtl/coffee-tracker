@@ -85,6 +85,10 @@ function matchPayload(match, { withParticipants = true, viewerId } = {}) {
     // invalidation). The client shows an (i) marker when set.
     recomputed_at: match.recomputed_at ?? null,
     recompute_reason: match.recompute_reason ?? null,
+    // Only the creator sees the join code — opponents get it out-of-band
+    // (issue #36). Every other viewer gets null, so the code cannot leak
+    // through a roster or leaderboard payload.
+    join_code: match.join_code && viewerId === match.creator_id ? match.join_code : null,
     participant_count: participants
       ? participants.length
       : db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?').get(match.id).c,

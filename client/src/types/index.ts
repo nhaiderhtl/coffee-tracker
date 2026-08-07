@@ -441,6 +441,8 @@ export interface Match {
   // invalidated (recompute_reason is a short why). Null means never recomputed.
   recomputed_at: number | null;
   recompute_reason: string | null;
+  // Only populated for the creator of a private global match (issue #36).
+  join_code: string | null;
   participant_count: number;
   participants: MatchParticipant[];
 }
