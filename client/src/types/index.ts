@@ -380,6 +380,12 @@ export interface CompetitionGroup {
   // One IANA zone for the whole group — every member's day/week boundary.
   timezone: string;
   is_public: 0 | 1;
+  // Days off (issue #18). 7-bit mask, bit0 = Monday ... bit6 = Sunday; 127 =
+  // every day active. A masked-out or paused day isn't scored and opens no match.
+  active_weekdays: number;
+  // Inclusive civil-date pause range (YYYY-MM-DD, group zone), or null when off.
+  pause_from: string | null;
+  pause_to: string | null;
   member_count: number;
   created_at: number;
   // Members only: the code that lets someone join a private group.
@@ -436,7 +442,11 @@ export interface Match {
 }
 
 export interface CompetitionsResponse {
-  group: { id: string; name: string; timezone: string } | null;
+  group: {
+    id: string; name: string; timezone: string;
+    // Days off (issue #18): 7-bit weekday mask + optional civil-date pause range.
+    active_weekdays: number; pause_from: string | null; pause_to: string | null;
+  } | null;
   open: Match[];
   live: Match[];
   settled: Match[];

@@ -16,6 +16,7 @@ const {
   mondayOf, dailyWindow, weeklyWindow, groupOf, metricsFor, scoreFor, scoresForMany, ratingOf,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal,
   lockDueLobbies, settleMatch, settleDueMatches, tick,
+  dayIsOff, offRangesForMatch, wholeWeekOff,
 } = require('./competitions');
 const { BASE_RATING, K_BY_MODE, points } = require('./competition-core');
 // The migration replays history through the FROZEN v1 math, so its expectations
@@ -896,4 +897,94 @@ test('a cancelled settlement (only one player) writes no match_end notification'
   settleMatch(match, end + 1);
   expect(matchById(match.id).state).toBe('cancelled');
   expect(notificationsFor(solo)).toHaveLength(0);
+});
+
+// ── days off / group schedule (issue #18) ────────────────────────────────────
+
+// Set the schedule on an existing group row and return the reloaded row, the
+// shape ensureRecurringMatch / offRangesForMatch read.
+function setSchedule(group, { mask = 127, from = null, to = null } = {}) {
+  db.prepare('UPDATE competition_groups SET active_weekdays = ?, pause_from = ?, pause_to = ? WHERE id = ?')
+    .run(mask, from, to, group.id);
+  return db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(group.id);
+}
+
+// bit0 = Monday ... bit6 = Sunday. Mon 2026-07-27 is index 0.
+const MON = 1 << 0;
+const ALL = 127;
+
+test('a masked-off weekday opens no daily; a default group still does', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  // Sunday 2026-07-26: the daily that opens is TOMORROW's, Monday 2026-07-27.
+  const now = Date.parse('2026-07-26T10:00:00Z');
+
+  const off = setSchedule(makeGroup('UTC', [a, b]), { mask: ALL & ~MON }); // Monday off
+  ensureRecurringMatch(off, 'daily', now);
+  expect(db.prepare("SELECT COUNT(*) AS c FROM matches WHERE group_id = ? AND mode = 'daily'").get(off.id).c).toBe(0);
+
+  const on = makeGroup('UTC', [makeUser('c'), makeUser('d')]); // default 127
+  ensureRecurringMatch(on, 'daily', now);
+  expect(db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'daily'").get(on.id).period_key)
+    .toBe('2026-07-27');
+});
+
+test('a fully-off week opens no weekly; a partially-off week still does', () => {
+  const now = Date.parse('2026-07-25T10:00:00Z'); // Sat: the weekly for Mon 2026-07-27 opens
+
+  const dead = setSchedule(makeGroup('UTC', [makeUser('a'), makeUser('b')]), { mask: 0 });
+  expect(wholeWeekOff(dead, '2026-07-27')).toBe(true);
+  ensureRecurringMatch(dead, 'weekly', now);
+  expect(db.prepare("SELECT COUNT(*) AS c FROM matches WHERE group_id = ? AND mode = 'weekly'").get(dead.id).c).toBe(0);
+
+  const partial = setSchedule(makeGroup('UTC', [makeUser('c'), makeUser('d')]), { mask: ALL & ~MON });
+  ensureRecurringMatch(partial, 'weekly', now);
+  expect(db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'weekly'").get(partial.id).period_key)
+    .toBe('2026-07-27');
+});
+
+test('a pause range covering the daily date opens no daily', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const now = Date.parse('2026-07-26T10:00:00Z'); // daily opens for Mon 2026-07-27
+  const paused = setSchedule(makeGroup('UTC', [a, b]), { from: '2026-07-27', to: '2026-07-30' });
+
+  expect(dayIsOff(paused, '2026-07-27')).toBe(true);
+  ensureRecurringMatch(paused, 'daily', now);
+  expect(db.prepare("SELECT COUNT(*) AS c FROM matches WHERE group_id = ? AND mode = 'daily'").get(paused.id).c).toBe(0);
+});
+
+test("a weekly's score drops coffees logged on off days (mask), keeps the rest", () => {
+  const user = makeUser('u');
+  const group = setSchedule(makeGroup('UTC', [user, makeUser('o')]), { mask: ALL & ~MON }); // Monday off
+  const { start, end } = weeklyWindow(group, Date.parse('2026-07-27T10:00:00Z'));
+  const match = openMatch({ group, mode: 'weekly', start, end, state: 'pending', roster: [{ userId: user }] });
+
+  logCoffee(user, Date.parse('2026-07-27T10:00:00Z'), { coffeeId: 'espresso', mg: 100 }); // Monday: off
+  logCoffee(user, Date.parse('2026-07-28T10:00:00Z'), { coffeeId: 'latte', mg: 80 });     // Tuesday: on
+
+  const excluded = offRangesForMatch(match);
+  // Monday drops out, so the schedule-aware score is exactly the Tue-onward
+  // window (Wed-Sun are empty) — and strictly less than counting both cups.
+  const tueOnward = Date.parse('2026-07-28T00:00:00Z');
+  expect(scoreFor(user, start, end, excluded)).toBe(scoreFor(user, tueOnward, end));
+  expect(scoreFor(user, start, end, excluded)).toBeLessThan(scoreFor(user, start, end));
+});
+
+test('a pause inside a partial week is excluded from the weekly score', () => {
+  const user = makeUser('u');
+  // Pause Tue-Wed of the week of Mon 2026-07-27.
+  const group = setSchedule(makeGroup('UTC', [user, makeUser('o')]), { from: '2026-07-28', to: '2026-07-29' });
+  const { start, end } = weeklyWindow(group, Date.parse('2026-07-27T10:00:00Z'));
+  const match = openMatch({ group, mode: 'weekly', start, end, state: 'pending', roster: [{ userId: user }] });
+
+  logCoffee(user, Date.parse('2026-07-27T10:00:00Z'), { mg: 50 });                      // Mon: on
+  logCoffee(user, Date.parse('2026-07-28T10:00:00Z'), { coffeeId: 'x', mg: 999 });      // Tue: paused
+  logCoffee(user, Date.parse('2026-07-29T10:00:00Z'), { coffeeId: 'y', mg: 999 });      // Wed: paused
+
+  const excluded = offRangesForMatch(match);
+  // Thu-Sun are empty, so the surviving score is exactly Monday's single cup.
+  const monEnd = Date.parse('2026-07-28T00:00:00Z') - 1;
+  expect(scoreFor(user, start, end, excluded)).toBe(scoreFor(user, start, monEnd));
+  expect(scoreFor(user, start, end, excluded)).toBeLessThan(scoreFor(user, start, end));
 });

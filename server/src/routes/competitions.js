@@ -4,7 +4,7 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE } = require('../competition-core');
-const { groupOf, scoresForMany, ratingsForMany, joinDeadline } = require('../competitions');
+const { groupOf, scoresForMany, ratingsForMany, joinDeadline, offRangesForMatch } = require('../competitions');
 const { badgesForMany } = require('../profile');
 
 const router = express.Router();
@@ -52,7 +52,8 @@ function participantsOf(match, viewerId) {
   const userIds = rows.map((r) => r.user_id);
   const livePoints = settled
     ? new Map()
-    : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
+    : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end),
+                    offRangesForMatch(match));
   const liveRatings = settled ? new Map() : ratingsForMany(userIds);
   const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
   const badges = badgesForMany(userIds, viewerId);
@@ -114,7 +115,14 @@ router.get('/', requireAuth, (req, res) => {
   if (group) {
     const rows = db.prepare('SELECT * FROM matches WHERE group_id = ? ORDER BY scope_start DESC LIMIT 60')
       .all(group.id);
-    groupBuckets.group = { id: group.id, name: group.name, timezone: group.timezone };
+    groupBuckets.group = {
+      id: group.id, name: group.name, timezone: group.timezone,
+      // Schedule (issue #18) so the log screen can warn when a coffee lands on an
+      // off day, the same way it warns about private logs.
+      active_weekdays: group.active_weekdays ?? 127,
+      pause_from: group.pause_from ?? null,
+      pause_to: group.pause_to ?? null,
+    };
     groupBuckets.open = rows.filter((m) => m.state === 'open').map((m) => matchPayload(m, { viewerId: req.user.id }));
     groupBuckets.live = rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m, { viewerId: req.user.id }));
     groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m, { viewerId: req.user.id }));

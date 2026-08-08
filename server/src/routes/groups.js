@@ -13,6 +13,9 @@ const router = express.Router();
 
 const NAME_RE = /^[\w][\w '-]{1,30}$/;
 const DESCRIPTION_MAX = 200;
+// A civil date in the group's zone: YYYY-MM-DD, no time component (issue #18).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const WEEKDAYS_ALL = 127; // 7-bit mask, every weekday on
 
 // Join codes are read off a screen and typed by hand, so the alphabet drops
 // the characters that get confused there (0/O, 1/I/L).
@@ -56,6 +59,9 @@ function publicGroup(group, { includeCode = false } = {}) {
     owner_id: group.owner_id,
     timezone: group.timezone,
     is_public: group.is_public,
+    active_weekdays: group.active_weekdays ?? 127,
+    pause_from: group.pause_from ?? null,
+    pause_to: group.pause_to ?? null,
     member_count: memberCount(group.id),
     created_at: group.created_at,
     ...(includeCode ? { join_code: group.join_code } : {}),
@@ -264,12 +270,16 @@ router.patch('/:id', requireAuth, (req, res) => {
   if (!group) return res.status(404).json({ error: 'Group not found' });
   if (group.owner_id !== req.user.id) return res.status(403).json({ error: 'Only the group owner can change this' });
 
-  const { name, description, timezone, is_public } = req.body || {};
+  const { name, description, timezone, is_public,
+          active_weekdays, pause_from, pause_to } = req.body || {};
   const next = {
     name: group.name,
     description: group.description,
     timezone: group.timezone,
     is_public: group.is_public,
+    active_weekdays: group.active_weekdays ?? WEEKDAYS_ALL,
+    pause_from: group.pause_from ?? null,
+    pause_to: group.pause_to ?? null,
   };
 
   if (name !== undefined) {
@@ -292,8 +302,38 @@ router.patch('/:id', requireAuth, (req, res) => {
   }
   if (is_public !== undefined) next.is_public = is_public ? 1 : 0;
 
-  db.prepare('UPDATE competition_groups SET name = ?, description = ?, timezone = ?, is_public = ? WHERE id = ?')
-    .run(next.name, next.description, next.timezone, next.is_public, group.id);
+  // Days off (issue #18). The weekday mask is a 7-bit integer; the pause is a
+  // from/to pair that is set and cleared together — either two valid civil dates
+  // with from <= to, or both null. Rejecting a half-set pair keeps the DB from
+  // ever holding a from with no to.
+  if (active_weekdays !== undefined) {
+    if (!Number.isInteger(active_weekdays) || active_weekdays < 0 || active_weekdays > WEEKDAYS_ALL) {
+      return res.status(400).json({ error: 'active_weekdays must be an integer 0-127' });
+    }
+    next.active_weekdays = active_weekdays;
+  }
+  if (pause_from !== undefined || pause_to !== undefined) {
+    const from = pause_from ?? null;
+    const to = pause_to ?? null;
+    const bothNull = from === null && to === null;
+    const bothDates = typeof from === 'string' && DATE_RE.test(from)
+      && typeof to === 'string' && DATE_RE.test(to);
+    if (!bothNull && !bothDates) {
+      return res.status(400).json({ error: 'Pause needs both a start and end date (YYYY-MM-DD), or clear both' });
+    }
+    if (bothDates && from > to) {
+      return res.status(400).json({ error: 'Pause start must be on or before pause end' });
+    }
+    next.pause_from = from;
+    next.pause_to = to;
+  }
+
+  db.prepare(`UPDATE competition_groups
+              SET name = ?, description = ?, timezone = ?, is_public = ?,
+                  active_weekdays = ?, pause_from = ?, pause_to = ?
+              WHERE id = ?`)
+    .run(next.name, next.description, next.timezone, next.is_public,
+         next.active_weekdays, next.pause_from, next.pause_to, group.id);
 
   // A zone change moves the day boundary. Matches already open keep the window
   // they were created with (their scores are already being measured against

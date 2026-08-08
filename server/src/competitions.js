@@ -70,6 +70,78 @@ function weeklyWindow(group, now = Date.now(), offsetDays = 0) {
   return { periodKey: monday, start, end };
 }
 
+// ── group schedule / days off (issue #18) ────────────────────────────────────
+
+// Every weekday active — the default mask, and the value that means "no schedule
+// restriction", identical to the behaviour before schedules existed.
+const ALL_WEEKDAYS = 127;
+
+// Weekday index of a civil date, Monday-anchored (0 = Mon ... 6 = Sun) to match
+// the weekly window and the active_weekdays bit order. Pure label arithmetic.
+function weekdayIdx(dateStr) {
+  const dow = new Date(Date.parse(`${dateStr}T00:00:00Z`)).getUTCDay(); // 0 = Sun
+  return (dow + 6) % 7;
+}
+
+// Is this civil date off for the group — either masked out of active_weekdays or
+// inside the inclusive pause range? Dates are compared as strings (ISO sorts
+// chronologically), all in the group's own zone.
+function dayIsOff(group, dateStr) {
+  const mask = group.active_weekdays ?? ALL_WEEKDAYS;
+  if (!(mask & (1 << weekdayIdx(dateStr)))) return true;
+  if (group.pause_from && group.pause_to
+      && dateStr >= group.pause_from && dateStr <= group.pause_to) return true;
+  return false;
+}
+
+// The instant sub-ranges of [start, end] that fall on the group's off days, in
+// the group's zone. These are excluded from scoring so a coffee logged on an off
+// day never counts toward a competition. Contiguous off days are merged so a
+// long pause adds one clause, not thirty.
+//
+// Fast path: a group with every weekday on and no pause excludes nothing, which
+// is every group that has never touched its schedule.
+function offRanges(group, start, end) {
+  const mask = group.active_weekdays ?? ALL_WEEKDAYS;
+  const hasPause = !!(group.pause_from && group.pause_to);
+  if (mask === ALL_WEEKDAYS && !hasPause) return [];
+
+  const tz = groupTz(group);
+  const lastDate = localDateStr(end, tz);
+  const ranges = [];
+  for (let d = localDateStr(start, tz); d <= lastDate; d = addDaysStr(d, 1)) {
+    if (!dayIsOff(group, d)) continue;
+    const bounds = localDayBounds(d, tz);
+    const from = Math.max(bounds.start, start);
+    const to = Math.min(bounds.end, end);
+    if (from > to) continue;
+    const prev = ranges[ranges.length - 1];
+    if (prev && from <= prev[1] + 1) prev[1] = to; // merge with the day before
+    else ranges.push([from, to]);
+  }
+  return ranges;
+}
+
+// Off ranges for a specific match, read from its group's live schedule. A global
+// (group-less) match has no schedule and excludes nothing.
+function offRangesForMatch(match) {
+  if (!match.group_id) return [];
+  const group = db.prepare(
+    'SELECT timezone, active_weekdays, pause_from, pause_to FROM competition_groups WHERE id = ?'
+  ).get(match.group_id);
+  return group ? offRanges(group, match.scope_start, match.scope_end) : [];
+}
+
+// Every day of the Monday-anchored week starting `monday` is off. Used to decide
+// whether to bother opening a weekly at all — a week with even one active day is
+// still created; only a fully-off week is skipped.
+function wholeWeekOff(group, monday) {
+  for (let i = 0; i < 7; i++) {
+    if (!dayIsOff(group, addDaysStr(monday, i))) return false;
+  }
+  return true;
+}
+
 // ── layer 1: score a user over a window ──────────────────────────────────────
 
 // Only PUBLIC entries count toward a competition, and only these two queries
@@ -91,15 +163,36 @@ const metricsStmt = () => db.prepare(`
   WHERE user_id = ? AND is_public = 1 AND logged_at >= ? AND logged_at <= ?
 `);
 
-// Raw metrics a user accumulated inside a match window.
-function metricsFor(userId, start, end) {
-  return metricsStmt().get(userId, start, end);
+// SQL that removes each excluded instant range from a `logged_at` window, plus
+// the params to bind. `excluded` is [[from, to], ...] (see offRanges); an empty
+// list produces no clause and no params, so the fast prepared path is unchanged.
+function excludeClause(excluded) {
+  if (excluded.length === 0) return { sql: '', params: [] };
+  return {
+    sql: excluded.map(() => 'AND NOT (logged_at >= ? AND logged_at <= ?)').join(' '),
+    params: excluded.flatMap(([from, to]) => [from, to]),
+  };
+}
+
+// Raw metrics a user accumulated inside a match window, minus any off-day ranges
+// (issue #18). With no exclusions this is one shared prepared statement; with
+// them the query is built per call, which only happens for a scheduled group.
+function metricsFor(userId, start, end, excluded = []) {
+  if (excluded.length === 0) return metricsStmt().get(userId, start, end);
+  const { sql, params } = excludeClause(excluded);
+  return db.prepare(`
+    SELECT COALESCE(SUM(${scoreMgSql()}), 0) AS caffeine,
+           COUNT(*)                          AS cups,
+           COUNT(DISTINCT coffee_id)         AS variety
+    FROM coffee_entries
+    WHERE user_id = ? AND is_public = 1 AND logged_at >= ? AND logged_at <= ? ${sql}
+  `).get(userId, start, end, ...params);
 }
 
 // The points a user earned inside a match window. Linear and uncapped — this is
 // the number the UI shows, raw, with no maximum to render it against.
-function scoreFor(userId, start, end) {
-  return points(metricsFor(userId, start, end));
+function scoreFor(userId, start, end, excluded = []) {
+  return points(metricsFor(userId, start, end, excluded));
 }
 
 // Same thing for a whole roster, in ONE query instead of one per player.
@@ -107,9 +200,10 @@ function scoreFor(userId, start, end) {
 // per-user form turns a page load into hundreds of round trips.
 // Returns Map(userId -> points); users with no entries are absent, so read it
 // with `?? 0`.
-function scoresForMany(userIds, start, end) {
+function scoresForMany(userIds, start, end, excluded = []) {
   if (userIds.length === 0) return new Map();
   const holes = userIds.map(() => '?').join(',');
+  const { sql, params } = excludeClause(excluded);
   const rows = db.prepare(`
     SELECT user_id,
            COALESCE(SUM(${scoreMgSql()}), 0) AS caffeine,
@@ -117,9 +211,9 @@ function scoresForMany(userIds, start, end) {
            COUNT(DISTINCT coffee_id)         AS variety
     FROM coffee_entries
     WHERE user_id IN (${holes}) AND is_public = 1
-      AND logged_at >= ? AND logged_at <= ?
+      AND logged_at >= ? AND logged_at <= ? ${sql}
     GROUP BY user_id
-  `).all(...userIds, start, end);
+  `).all(...userIds, start, end, ...params);
   return new Map(rows.map((r) => [r.user_id, points(r)]));
 }
 
@@ -203,6 +297,13 @@ function ensureRecurringMatch(group, mode, now) {
   ).get(group.id, mode, periodKey);
   if (existing) return null;
 
+  // Days off (issue #18): a daily is not opened on an off day at all, and a
+  // weekly is skipped only when its whole week is off — a week with even one
+  // active day still runs and simply drops its off days from the score.
+  if (mode === 'daily' ? dayIsOff(group, periodKey) : wholeWeekOff(group, periodKey)) {
+    return null;
+  }
+
   // Never open a period that is already under way. The lead time only lands on
   // a future window when it crosses a period boundary — weekly's two days do
   // that on Sat/Sun only, so Mon-Fri this asks for the CURRENT week. For a
@@ -235,7 +336,9 @@ function ensureRecurringMatch(group, mode, now) {
 }
 
 function ensureRecurringMatches(now = Date.now()) {
-  const groups = db.prepare('SELECT id, timezone FROM competition_groups').all();
+  const groups = db.prepare(
+    'SELECT id, timezone, active_weekdays, pause_from, pause_to FROM competition_groups'
+  ).all();
   for (const group of groups) {
     ensureRecurringMatch(group, 'daily', now);
     ensureRecurringMatch(group, 'weekly', now);
@@ -306,10 +409,13 @@ function settleMatch(match, now = Date.now()) {
     'SELECT user_id FROM match_participants WHERE match_id = ? ORDER BY joined_at, user_id'
   ).all(match.id);
 
+  // Off days (issue #18) are dropped from the score: a coffee logged on a
+  // masked or paused day never counts toward the settlement.
+  const excluded = offRangesForMatch(match);
   const players = rows.map((r) => ({
     userId: r.user_id,
     rating: ratingOf(r.user_id),
-    score: scoreFor(r.user_id, match.scope_start, match.scope_end),
+    score: scoreFor(r.user_id, match.scope_start, match.scope_end, excluded),
   }));
 
   if (players.length < 2) return cancel(match.id, now);
@@ -437,6 +543,7 @@ function stopTicker() {
 module.exports = {
   TICK_MS, DAILY_LEAD_DAYS, WEEKLY_LEAD_DAYS,
   mondayOf, addDaysStr, dailyWindow, weeklyWindow, groupOf, autoJoinMemberIds,
+  dayIsOff, offRanges, offRangesForMatch, wholeWeekOff,
   metricsFor, scoreFor, scoresForMany, ratingOf, ratingsForMany,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal, lockDueLobbies,
   joinDeadline, settleMatch, settleDueMatches, tick, startTicker, stopTicker,

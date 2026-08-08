@@ -9,7 +9,29 @@ import {
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import { prepareImageUpload } from '../lib/image';
-import type { Coffee, CoffeeClass } from '../types';
+import type { Coffee, CoffeeClass, CompetitionsResponse } from '../types';
+
+type GroupSchedule = NonNullable<CompetitionsResponse['group']>;
+
+// The civil date (YYYY-MM-DD) an instant falls on in the group's zone — the same
+// day the server uses to decide whether a coffee is scored.
+function civilDate(tz: string, ts: number): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(ts);
+}
+
+// Whether a coffee logged at `ts` lands on one of the group's off days (issue
+// #18), mirroring server/src/competitions.js dayIsOff: 'paused' if inside the
+// pause range, 'masked' if the weekday is switched off, else null. bit0 = Monday.
+function offDayReason(s: GroupSchedule, ts: number): 'paused' | 'masked' | null {
+  const d = civilDate(s.timezone, ts);
+  if (s.pause_from && s.pause_to && d >= s.pause_from && d <= s.pause_to) return 'paused';
+  const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  const mondayIdx = (dow + 6) % 7;
+  if (!(s.active_weekdays & (1 << mondayIdx))) return 'masked';
+  return null;
+}
 
 export function LogCoffee() {
   const navigate = useNavigate();
@@ -31,6 +53,14 @@ export function LogCoffee() {
     queryKey: ['coffee-classes'],
     queryFn: () => api.get<CoffeeClass[]>('/coffees/classes'),
     staleTime: Infinity,
+  });
+
+  // The caller's group schedule (issue #18) so we can warn, at log time, that a
+  // coffee on an off day won't count — cached from the Compete page if visited.
+  const { data: comp } = useQuery<CompetitionsResponse>({
+    queryKey: ['competitions'],
+    queryFn: () => api.get<CompetitionsResponse>('/competitions'),
+    staleTime: 60_000,
   });
 
   const [photo, setPhoto] = useState<File | null>(null);
@@ -56,6 +86,12 @@ export function LogCoffee() {
 
   const now = useNow(30_000);
   const resolvedTime = resolvePastTime(pastTime, now);
+
+  // A public coffee landing on the group's off day scores nothing — shown the
+  // same way as the private-log warning. Private logs already carry their own
+  // not-counted note, so this only fires for public ones.
+  const offReason = comp?.group && resolvedTime.timestamp !== null
+    ? offDayReason(comp.group, resolvedTime.timestamp) : null;
 
   // A *public* post must carry a photo or a description — mirrors the server's
   // POST /coffees/entries rule. A private entry needs only the coffee type.
@@ -317,6 +353,14 @@ export function LogCoffee() {
               expect" notice. */}
           {!isPublic && (
             <div className="log-requirement-hint">Private logs don’t count toward rating.</div>
+          )}
+          {/* Off day (issue #18): a public coffee on a paused or switched-off day
+              is not scored, just like a private one. Same warning styling. */}
+          {isPublic && offReason && (
+            <div className="log-requirement-hint">
+              {offReason === 'paused' ? 'Paused day — won’t count toward rating.'
+                : 'Day off — won’t count toward rating.'}
+            </div>
           )}
 
           {error && <div className="auth-error">{error}</div>}
