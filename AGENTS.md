@@ -44,6 +44,22 @@ Write only on an explicit write verb — "add", "update", "fix", "put it in",
 If the expected action is unclear, stop and make the user state it before
 doing anything. Never guess, and never pick the more ambitious reading.
 
+## Answering questions is not permission to start
+
+Making a plan, asking clarifying questions, then immediately starting is an
+**anti-pattern and not allowed.** Answering a question does not change the
+interaction state — planning stays planning. The user should never have to say
+"don't implement yet" after answering; that is the default.
+
+When in planning and the plan changes (including because a clarification changed
+it), present the **new brief plan** and stop. Do not begin work until the user
+explicitly says to start.
+
+You cannot circumvent this by ending on a "Start now?" question — a question
+modifies the plan, and the user cannot confirm an unfinished plan through it.
+Approval to build is a separate, explicit "start" from the user, given against a
+plan that is already complete.
+
 ## Never remove one thing to achieve another
 
 Do not delete, disable, or gut an existing feature as a means of reaching some
