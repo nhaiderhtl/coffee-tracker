@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { DayPicker, type DateRange } from 'react-day-picker';
+import 'react-day-picker/style.css';
 import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { ResponsiveImage } from '../components/ResponsiveImage';
@@ -139,6 +141,128 @@ function ToggleRow({ label, sub, value, onChange, disabled }: {
       >
         <span className="log-toggle-knob" />
       </button>
+    </div>
+  );
+}
+
+// Circular single-letter day toggles, Sunday-first (S M T W T F S) exactly like
+// Google Clock's repeat row. The 7-bit mask stays Monday-anchored to match the
+// weekly window and the server (bit0 = Mon ... bit6 = Sun), so the display order
+// carries each column's own bit rather than assuming index === bit.
+const WEEKDAY_CELLS = [
+  { label: 'S', bit: 6, name: 'Sunday' },
+  { label: 'M', bit: 0, name: 'Monday' },
+  { label: 'T', bit: 1, name: 'Tuesday' },
+  { label: 'W', bit: 2, name: 'Wednesday' },
+  { label: 'T', bit: 3, name: 'Thursday' },
+  { label: 'F', bit: 4, name: 'Friday' },
+  { label: 'S', bit: 5, name: 'Saturday' },
+];
+function WeekdayPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="cmp-weekday-row" role="group" aria-label="Active days">
+      {WEEKDAY_CELLS.map(({ label, bit, name }) => {
+        const on = (value & (1 << bit)) !== 0;
+        return (
+          <button
+            key={name}
+            type="button"
+            className={`cmp-weekday${on ? ' on' : ''}`}
+            aria-pressed={on}
+            aria-label={name}
+            onClick={() => onChange(value ^ (1 << bit))}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Civil date <-> string, using the LOCAL calendar fields only (never a UTC
+// parse), so a YYYY-MM-DD round-trips unshifted regardless of browser zone. The
+// pause is a set of civil dates, so no instant/zone conversion belongs here.
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function parseYmd(s: string) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function fmtDate(s: string) {
+  return parseYmd(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// The pause, as the Google Clock "pause alarm" flow does it (issue #18): a
+// trigger row that opens a modal calendar — the grid is NOT left sitting in the
+// form. from/to are civil-date strings; empty = not paused.
+function PausePicker({ from, to, onChange }: {
+  from: string; to: string; onChange: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const set = !!from;
+  return (
+    <>
+      <button type="button" className="cmp-pause-row" onClick={() => setOpen(true)}>
+        <span className="cmp-pause-row-label">
+          <Icon name="clock" size={16} />
+          {set ? (to && to !== from ? `${fmtDate(from)} – ${fmtDate(to)}` : fmtDate(from)) : 'Pause schedule'}
+        </span>
+        {set
+          ? <span className="cmp-pause-x" role="button" aria-label="Cancel pause"
+                  onClick={e => { e.stopPropagation(); onChange('', ''); }}><Icon name="close" size={16} /></span>
+          : <span className="cmp-pause-add" aria-hidden="true"><Icon name="plus" size={16} /></span>}
+      </button>
+      {open && (
+        <PauseDialog
+          from={from}
+          to={to}
+          onCancel={() => setOpen(false)}
+          onSave={(f, t) => { onChange(f, t); setOpen(false); }}
+        />
+      )}
+    </>
+  );
+}
+
+// The modal: pick a start then an end on one month grid, OK commits, Cancel or
+// the backdrop discards. Range lives in draft state so a cancel changes nothing.
+function PauseDialog({ from, to, onCancel, onSave }: {
+  from: string; to: string; onCancel: () => void; onSave: (from: string, to: string) => void;
+}) {
+  const [range, setRange] = useState<DateRange | undefined>(
+    from ? { from: parseYmd(from), to: to ? parseYmd(to) : undefined } : undefined,
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  const f = range?.from ? ymd(range.from) : '';
+  const t = range?.to ? ymd(range.to) : '';
+  const header = f && t ? `${fmtDate(f)} – ${fmtDate(t)}` : f ? fmtDate(f) : 'Select dates';
+
+  return (
+    <div className="confirm-backdrop" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Pause dates">
+      <div className="confirm-box cmp-pause-box" onClick={e => e.stopPropagation()}>
+        <div className="cmp-pause-head">Select the dates to pause</div>
+        <div className="cmp-pause-range">{header}</div>
+        <DayPicker
+          mode="range"
+          defaultMonth={range?.from ?? new Date()}
+          selected={range}
+          onSelect={setRange}
+          formatters={{ formatWeekdayName: (d) => d.toLocaleDateString(undefined, { weekday: 'narrow' }) }}
+        />
+        <div className="cmp-pause-actions">
+          <button type="button" className="cmp-pause-text" onClick={onCancel}>Cancel</button>
+          {/* A single tap is a one-day pause: from with no to. */}
+          <button type="button" className="cmp-pause-text cmp-pause-ok" onClick={() => onSave(f, f && !t ? f : t)}>OK</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -867,6 +991,32 @@ function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalS
   );
 }
 
+// The group's schedule as every member sees it (issue #18): which days are on,
+// and whether it is paused. Read-only — only the owner edits it (GroupSettings).
+// It reads straight from the group query, the single source of truth, so it can
+// never disagree with the owner's form once a save lands.
+function ScheduleView({ group }: { group: NonNullable<GroupDetailResponse['group']> }) {
+  const mask = group.active_weekdays ?? 127;
+  const paused = group.pause_from && group.pause_to;
+  return (
+    <div className="card cmp-schedule">
+      <div className="section-label">Schedule</div>
+      <div className="cmp-weekday-row cmp-weekday-ro" role="group" aria-label="Active days">
+        {WEEKDAY_CELLS.map(({ label, bit, name }) => (
+          <span key={name} className={`cmp-weekday${(mask & (1 << bit)) ? ' on' : ''}`} aria-label={name}>
+            {label}
+          </span>
+        ))}
+      </div>
+      <div className="field-hint">
+        {paused
+          ? `Paused ${fmtDate(group.pause_from!)} – ${fmtDate(group.pause_to!)}`
+          : 'Not paused'}
+      </div>
+    </div>
+  );
+}
+
 // The group itself: what it is, how to get into it, and the preferences that
 // only mean anything inside one (auto-join, and the owner's group settings).
 // The member list is not repeated here — Ranking is the member list now.
@@ -920,6 +1070,8 @@ function PreferencesSection() {
         </div>
       </div>
 
+      <ScheduleView group={group} />
+
       <AutoJoinCard />
 
       {isOwner && <GroupSettings group={group} />}
@@ -951,6 +1103,9 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
   const [description, setDescription] = useState(group.description ?? '');
   const [timezone, setTimezone] = useState(group.timezone);
   const [isPublic, setIsPublic] = useState(group.is_public === 1);
+  const [activeWeekdays, setActiveWeekdays] = useState(group.active_weekdays ?? 127);
+  const [pauseFrom, setPauseFrom] = useState(group.pause_from ?? '');
+  const [pauseTo, setPauseTo] = useState(group.pause_to ?? '');
   const [error, setError] = useState<string | null>(null);
 
   // The form stays mounted while closed, so its state outlives a cancel unless
@@ -962,15 +1117,28 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
     setDescription(group.description ?? '');
     setTimezone(group.timezone);
     setIsPublic(group.is_public === 1);
+    setActiveWeekdays(group.active_weekdays ?? 127);
+    setPauseFrom(group.pause_from ?? '');
+    setPauseTo(group.pause_to ?? '');
     setError(null);
   }
 
   const save = useMutation({
     mutationFn: () => api.patch<GroupDetailResponse>(`/groups/${group.id}`, {
       name, description: description.trim() || null, timezone, is_public: isPublic,
+      active_weekdays: activeWeekdays,
+      // A one-tap selection is a single-day pause (from === to); no selection
+      // clears the pause (both null).
+      pause_from: pauseFrom || null,
+      pause_to: pauseFrom ? (pauseTo || pauseFrom) : null,
     }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setOpen(false);
+      // Write the server's own updated group into the query that the member-
+      // visible schedule reads from, so the display and the (re-opened) form
+      // can never show two different states after a save. Competitions still
+      // refetch because the schedule changes which matches open/score.
+      qc.setQueryData(['groups', 'mine'], res);
       qc.invalidateQueries({ queryKey: ['groups'] });
       qc.invalidateQueries({ queryKey: ['competitions'] });
     },
@@ -1004,6 +1172,14 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
         <TimezonePicker id="cmp-gtz" value={timezone} onChange={setTimezone} />
         <div className="field-hint">Applies from the next day and week.</div>
       </div>
+
+      <div className="field">
+        <label>Active days</label>
+        <WeekdayPicker value={activeWeekdays} onChange={setActiveWeekdays} />
+        <div className="field-hint">Off days aren’t scored.</div>
+      </div>
+
+      <PausePicker from={pauseFrom} to={pauseTo} onChange={(f, t) => { setPauseFrom(f); setPauseTo(t); }} />
 
       <PublicToggle value={isPublic} onChange={setIsPublic} />
 

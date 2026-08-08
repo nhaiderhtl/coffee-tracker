@@ -1585,6 +1585,58 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .cmp-mode-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+/* Days off (issue #18): circular S-M-T-W-T-F-S day toggles, like Google Clock. */
+.cmp-weekday-row { display: flex; gap: 6px; justify-content: space-between; }
+.cmp-weekday {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface2); color: var(--text-muted);
+  font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cmp-weekday.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+/* Dark theme's accent is a light cyan — white text on it is too low-contrast, so
+   the filled disc takes dark text instead (readable on the light accent). */
+[data-dark="true"] .cmp-weekday.on { color: var(--bg); }
+/* Read-only schedule shown to every member (issue #18): same discs, no input. */
+.cmp-schedule { display: flex; flex-direction: column; gap: 10px; }
+.cmp-weekday-ro .cmp-weekday { cursor: default; display: flex; align-items: center; justify-content: center; }
+/* Pause row (Google Clock "Pause alarm" line): icon + label left, a circled +
+   right that becomes an X once a range is set. Not a bordered box — a row. */
+.cmp-pause-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 4px 2px; background: none; border: none; cursor: pointer;
+  color: var(--text-primary); font-size: 0.9rem; font-weight: 600;
+}
+.cmp-pause-row-label { display: flex; align-items: center; gap: 10px; }
+.cmp-pause-row-label svg { color: var(--text-muted); flex: 0 0 auto; }
+.cmp-pause-add, .cmp-pause-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%; color: var(--text-muted); flex: 0 0 auto;
+}
+.cmp-pause-add:hover, .cmp-pause-x:hover { background: var(--surface2); color: var(--text-primary); }
+/* Modal: wider than the default confirm box so a month grid fits. */
+.cmp-pause-box { max-width: 360px; }
+.cmp-pause-head { font-size: 0.82rem; color: var(--text-muted); }
+.cmp-pause-range { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); margin: 2px 0 12px; }
+/* Cancel / OK: right-aligned text buttons, like the Clock dialog. */
+.cmp-pause-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.cmp-pause-text {
+  background: none; border: none; padding: 8px 12px; cursor: pointer;
+  color: var(--text-sec); font-size: 0.9rem; font-weight: 600;
+}
+.cmp-pause-ok { color: var(--accent); }
+/* Theme the react-day-picker range calendar to the app's tokens (issue #18). */
+.cmp-pause-box .rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-bg);
+  --rdp-today-color: var(--accent);
+  margin: 0 auto;
+  font-size: 0.85rem;
+}
+.cmp-pause-box .rdp-day_button:hover { background: var(--surface2); }
+.cmp-pause-box .rdp-chevron { fill: var(--text-muted); }
+.cmp-pause-box .rdp-weekday { color: var(--text-muted); }
 /* Timezone picker */
 .tzp { position: relative; }
 .tzp-list {
