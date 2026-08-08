@@ -1585,7 +1585,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .cmp-mode-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
-/* Days off (issue #18): circular S-M-T-W-T-F-S day toggles, like Google Clock. */
+/* Days off (issue #18): circular single-letter day toggles. */
 .cmp-weekday-row { display: flex; gap: 6px; justify-content: space-between; }
 .cmp-weekday {
   width: 34px; height: 34px; border-radius: 50%;
@@ -1601,8 +1601,8 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 /* Read-only schedule shown to every member (issue #18): same discs, no input. */
 .cmp-schedule { display: flex; flex-direction: column; gap: 10px; }
 .cmp-weekday-ro .cmp-weekday { cursor: default; display: flex; align-items: center; justify-content: center; }
-/* Pause row (Google Clock "Pause alarm" line): icon + label left, a circled +
-   right that becomes an X once a range is set. Not a bordered box — a row. */
+/* Pause row: icon + label left, a circled + right that becomes an X once a
+   range is set. Not a bordered box, a row. */
 .cmp-pause-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   width: 100%; padding: 4px 2px; background: none; border: none; cursor: pointer;

@@ -145,23 +145,46 @@ function ToggleRow({ label, sub, value, onChange, disabled }: {
   );
 }
 
-// Circular single-letter day toggles, Sunday-first (S M T W T F S) exactly like
-// Google Clock's repeat row. The 7-bit mask stays Monday-anchored to match the
-// weekly window and the server (bit0 = Mon ... bit6 = Sun), so the display order
-// carries each column's own bit rather than assuming index === bit.
+// Circular single-letter day toggles. This list is in fixed Monday..Sunday
+// order and each column carries its own bit (bit0 = Mon ... bit6 = Sun), so the
+// mask stays Monday-anchored to match the weekly window and the server. The
+// COLUMN order shown to the user is a locale rotation of this list
+// (ORDERED_WEEKDAY_CELLS below), so Monday is not necessarily the first column.
 const WEEKDAY_CELLS = [
-  { label: 'S', bit: 6, name: 'Sunday' },
   { label: 'M', bit: 0, name: 'Monday' },
   { label: 'T', bit: 1, name: 'Tuesday' },
   { label: 'W', bit: 2, name: 'Wednesday' },
   { label: 'T', bit: 3, name: 'Thursday' },
   { label: 'F', bit: 4, name: 'Friday' },
   { label: 'S', bit: 5, name: 'Saturday' },
+  { label: 'S', bit: 6, name: 'Sunday' },
 ];
+
+// First day of the week for the viewer's locale, as react-day-picker's
+// weekStartsOn (0 = Sun ... 6 = Sat). Storage/scoring stay Monday-anchored — this
+// only rotates what the user sees. Falls back to Monday where Intl weekInfo is
+// unavailable.
+function localeWeekStartsOn(): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
+  try {
+    const loc = new Intl.Locale(navigator.language) as Intl.Locale & {
+      weekInfo?: { firstDay?: number };
+      getWeekInfo?: () => { firstDay?: number };
+    };
+    const first = (loc.getWeekInfo?.() ?? loc.weekInfo)?.firstDay; // ISO: 1 = Mon ... 7 = Sun
+    if (first) return (first % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  } catch { /* Intl.Locale weekInfo not supported — keep Monday */ }
+  return 1;
+}
+const WEEK_STARTS_ON = localeWeekStartsOn();
+// WEEKDAY_CELLS rotated so the viewer's first weekday leads. (weekStartsOn + 6) % 7
+// converts the date-fns dow (0 = Sun) to this list's Monday-anchored index.
+const ORDERED_WEEKDAY_CELLS = WEEKDAY_CELLS.map(
+  (_, i) => WEEKDAY_CELLS[((WEEK_STARTS_ON + 6) % 7 + i) % 7],
+);
 function WeekdayPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div className="cmp-weekday-row" role="group" aria-label="Active days">
-      {WEEKDAY_CELLS.map(({ label, bit, name }) => {
+      {ORDERED_WEEKDAY_CELLS.map(({ label, bit, name }) => {
         const on = (value & (1 << bit)) !== 0;
         return (
           <button
@@ -194,9 +217,9 @@ function fmtDate(s: string) {
   return parseYmd(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-// The pause, as the Google Clock "pause alarm" flow does it (issue #18): a
-// trigger row that opens a modal calendar — the grid is NOT left sitting in the
-// form. from/to are civil-date strings; empty = not paused.
+// Pause control (issue #18): a trigger row that opens a modal calendar rather
+// than leaving the grid sitting in the form. from/to are civil-date strings;
+// empty = not paused.
 function PausePicker({ from, to, onChange }: {
   from: string; to: string; onChange: (from: string, to: string) => void;
 }) {
@@ -252,6 +275,7 @@ function PauseDialog({ from, to, onCancel, onSave }: {
         <div className="cmp-pause-range">{header}</div>
         <DayPicker
           mode="range"
+          weekStartsOn={WEEK_STARTS_ON}
           defaultMonth={range?.from ?? new Date()}
           selected={range}
           onSelect={setRange}
@@ -1002,7 +1026,7 @@ function ScheduleView({ group }: { group: NonNullable<GroupDetailResponse['group
     <div className="card cmp-schedule">
       <div className="section-label">Schedule</div>
       <div className="cmp-weekday-row cmp-weekday-ro" role="group" aria-label="Active days">
-        {WEEKDAY_CELLS.map(({ label, bit, name }) => (
+        {ORDERED_WEEKDAY_CELLS.map(({ label, bit, name }) => (
           <span key={name} className={`cmp-weekday${(mask & (1 << bit)) ? ' on' : ''}`} aria-label={name}>
             {label}
           </span>
