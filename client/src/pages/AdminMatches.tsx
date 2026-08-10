@@ -52,12 +52,14 @@ function MatchRow({ m, now }: { m: AdminMatch; now: number }) {
   });
 
   const stateLabel = m.state === 'invalidated' ? 'invalidated' : m.state;
-  // Why the invalidate button is disabled, if it is (settled only, within cap).
-  const blockedReason = m.state !== 'settled'
-    ? `Already ${stateLabel}`
-    : !m.invalidatable
-      ? `${m.settled_after} matches settled after this — too many to invalidate`
-      : null;
+  // Invalidate only a settled match still within the depth cap. Disabled
+  // otherwise, with a terse label saying why.
+  const canInvalidate = m.state === 'settled' && m.invalidatable;
+  const buttonLabel = m.state === 'invalidated' ? 'Invalidated'
+    : m.state === 'cancelled' ? 'Cancelled'
+      : m.state !== 'settled' ? 'Not settled'
+        : !m.invalidatable ? `Locked · ${m.settled_after} newer`
+          : 'Invalidate';
 
   return (
     <div className={`admin-acc${open ? ' open' : ''}`}>
@@ -77,11 +79,13 @@ function MatchRow({ m, now }: { m: AdminMatch; now: number }) {
         <div className="admin-match-body">
           <MatchCard match={m} now={now} />
           <div className="admin-match-actions">
-            {blockedReason
-              ? <span className="field-hint">{blockedReason}</span>
-              : <button className="btn-danger" onClick={() => { setError(''); setConfirming(true); }}>
-                  Invalidate match
-                </button>}
+            <button
+              className="btn-danger"
+              disabled={!canInvalidate}
+              onClick={() => { setError(''); setConfirming(true); }}
+            >
+              {buttonLabel}
+            </button>
           </div>
         </div>
       )}

@@ -68,7 +68,7 @@ function CardBody({ r, time, generic }: { r: RenderedNotification; time: string;
   if (r.kind === 'recompute') {
     return (
       <>
-        <span className="ntf-badge" data-tone="neutral"><Icon name={r.icon} size={20} /></span>
+        <span className="ntf-badge" data-tone="warn"><Icon name={r.icon} size={20} /></span>
         <div className="ntf-main">
           <div className="ntf-head">
             <span className="ntf-title">{r.title}</span>

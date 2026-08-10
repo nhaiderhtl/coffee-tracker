@@ -125,13 +125,15 @@ export function renderNotification(n: AppNotification): RenderedNotification {
 // (they have their own plans), and unknown/raw types stay out too — a toast is
 // only for a type we can present cleanly. This is the single place that decides
 // what toasts.
-export function toastFor(n: AppNotification): { icon: string; title: string; body: ReactNode } | null {
+export function toastFor(n: AppNotification): { icon: string; title: string; body: ReactNode; tone?: 'warn' } | null {
   const r = renderNotification(n);
   if (r.kind === 'simple') return { icon: r.icon, title: r.name, body: r.description };
   if (r.kind === 'recompute') {
     return {
       icon: r.icon,
       title: r.title,
+      // Invalidation context: warn tone, kept low-key (icon tint only).
+      tone: 'warn',
       body: highlight(`**${r.invalidatedTitle}** was removed by an admin. Your rating changed from **${r.oldRating}** to **${r.newRating}**.`),
     };
   }
