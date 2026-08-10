@@ -142,6 +142,42 @@ test('the invalidated match moves no rating — all its deltas are zero', () => 
   }
 });
 
+test('a later match sharing no player with the target is a no-op — not stamped, not notified', () => {
+  // Group 1 owns the target; group 2's match settles after it but shares no
+  // player, so the replay reproduces its identical ledger. It must not be marked
+  // recomputed and its players must get no "your rating changed" notification.
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const c = makeUser('c');
+  const d = makeUser('d');
+  const g1 = makeGroup([a.id, b.id]);
+  const g2 = makeGroup([c.id, d.id]);
+  const t0 = Date.parse('2026-07-26T10:00:00Z');
+  const target = runMatch(g1, { [a.id]: 200, [b.id]: 20 }, t0);
+  const other = runMatch(g2, { [c.id]: 150, [d.id]: 90 }, t0 + DAY);
+
+  const otherBefore = parts(other.id).map((p) => ({ user_id: p.user_id, delta: p.delta, rating_after: p.rating_after }));
+
+  const summary = invalidateMatch(target.id, 999);
+
+  // The unrelated match is untouched: same ledger, no recompute stamp.
+  const otherRow = matchById(other.id);
+  expect(otherRow.state).toBe('settled');
+  expect(otherRow.recomputed_at).toBeNull();
+  for (const p of parts(other.id)) {
+    const was = otherBefore.find((o) => o.user_id === p.user_id);
+    expect(p.delta).toBe(was.delta);
+    expect(p.rating_after).toBe(was.rating_after);
+  }
+  // Its players hear nothing; only the target's roster is notified.
+  expect(recomputedFor(c.id).length).toBe(0);
+  expect(recomputedFor(d.id).length).toBe(0);
+  expect(recomputedFor(a.id).length).toBe(1);
+  // Summary counts only matches actually rewritten (none here after the target).
+  expect(summary.matches_recomputed).toBe(0);
+  expect(summary.participants_notified).toBe(2); // a + b, the target roster
+});
+
 test('matches after the target are re-settled from their stored score, stamped recomputed', () => {
   const { m1, m2, m3 } = threeSettled();
 

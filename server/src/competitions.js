@@ -563,6 +563,7 @@ function invalidateMatch(matchId, now = Date.now()) {
     : null);
 
   const notifications = []; // { userId, payload } — emitted inside the transaction
+  let recomputed = 0;       // matches actually rewritten (a no-op replay is neither)
 
   db.transaction(() => {
     for (const match of replayWindow) {
@@ -590,10 +591,23 @@ function invalidateMatch(matchId, now = Date.now()) {
         results = settleFfa(players, match.k_factor, marginScale);
       }
 
+      // A match in the settle-order window that shares no changed player with the
+      // target replays to the identical ledger (settleFfa is deterministic on the
+      // stored score + unchanged seed). Such a match moved nothing, so it must not
+      // be stamped recomputed and its players must not be told "your rating
+      // changed" — that would be a false correction on an untouched group.
+      let matchChanged = false;
+
       for (const r of results) {
         writeParticipant.run(r.ratingBefore, r.ratingAfter, r.delta, match.id, r.userId);
         cache.set(r.userId, r.ratingAfter);
         const old = oldByUser.get(r.userId);
+        const userChanged = old.after !== r.ratingAfter || old.delta !== r.delta;
+        if (userChanged) matchChanged = true;
+        // Notify a player only when their ledger actually moved. The target's own
+        // roster always notifies (the match they were in is gone), even for a
+        // player whose rating happens not to shift.
+        if (!isTarget && !userChanged) continue;
         // Self-contained payload (ids AND names) — the toast never reads back into
         // live tables. Carries old vs new so the user sees the correction.
         notifications.push({
@@ -619,8 +633,12 @@ function invalidateMatch(matchId, now = Date.now()) {
         });
       }
 
-      if (isTarget) stampInvalidated.run(match.id);
-      else stampRecomputed.run(now, RECOMPUTE_REASON, match.id);
+      if (isTarget) {
+        stampInvalidated.run(match.id);
+      } else if (matchChanged) {
+        stampRecomputed.run(now, RECOMPUTE_REASON, match.id);
+        recomputed += 1;
+      }
     }
 
     // Rebuild the rating cache for every user the replay touched. The window is
@@ -636,7 +654,7 @@ function invalidateMatch(matchId, now = Date.now()) {
 
   return {
     invalidated: target.id,
-    matches_recomputed: after.length,
+    matches_recomputed: recomputed,
     participants_notified: notifications.length,
   };
 }
