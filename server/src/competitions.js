@@ -491,6 +491,174 @@ function settleDueMatches(now = Date.now()) {
   return due.length;
 }
 
+// ── admin match invalidation ─────────────────────────────────────────────────
+
+// At most this many settled matches may follow the target in settle order. A
+// deeper replay would rewrite more immutable ledger rows than a correction can
+// stay legible for (the info marker on each recomputed card is the trade-off).
+const MAX_INVALIDATE_DEPTH = 3;
+const RECOMPUTE_REASON = 'a match was invalidated';
+
+// Invalidate a wrongly-settled match (super-admin action, gated in the route).
+// The target keeps its audit rows but moves no rating, and every settled match
+// after it in settle order is re-settled from its STORED score so the running
+// ratings stay correct and zero-sum — the same replay shape as migration 015,
+// but with the CURRENT settleFfa/marginScaleFor (015 froze v1 because it re-ran
+// history predating v2; here every match in the window was already settled under
+// v2, so the current curve is the right one).
+//
+// Correctness of the partial replay: matches BEFORE the target are untouched, so
+// each player's stored `rating_before` in their FIRST window match is still the
+// true rating they carried into it. That is the seed; every later window match
+// reads the running value the replay just wrote. Nothing is re-read from
+// coffee_entries — the stored `score` is the immutable record of the window.
+//
+// Returns a summary { invalidated, matches_recomputed, participants_notified }.
+function invalidateMatch(matchId, now = Date.now()) {
+  const target = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!target) throw new Error('Match not found');
+  if (target.state !== 'settled') throw new Error('Only a settled match can be invalidated');
+
+  // Settle order is (settled_at, id) — a total order. Only settled matches hold a
+  // rating, so pending/open/cancelled/already-invalidated ones can never shift
+  // and are not counted toward the depth cap or the replay.
+  const after = db.prepare(`
+    SELECT * FROM matches
+    WHERE state = 'settled'
+      AND (settled_at > ? OR (settled_at = ? AND id > ?))
+    ORDER BY settled_at, id
+  `).all(target.settled_at, target.settled_at, target.id);
+
+  if (after.length > MAX_INVALIDATE_DEPTH) {
+    throw new Error(
+      `${after.length} matches settled after this one — at most ${MAX_INVALIDATE_DEPTH} may follow an invalidated match`,
+    );
+  }
+
+  const replayWindow = [target, ...after];
+
+  const loadRoster = db.prepare(
+    'SELECT user_id, score, rating_before, rating_after, delta FROM match_participants WHERE match_id = ? ORDER BY joined_at, user_id',
+  );
+  const writeParticipant = db.prepare(
+    'UPDATE match_participants SET rating_before = ?, rating_after = ?, delta = ? WHERE match_id = ? AND user_id = ?',
+  );
+  const stampInvalidated = db.prepare("UPDATE matches SET state = 'invalidated' WHERE id = ?");
+  const stampRecomputed = db.prepare('UPDATE matches SET recomputed_at = ?, recompute_reason = ? WHERE id = ?');
+  const upsertRating = db.prepare(`
+    INSERT INTO user_ratings (user_id, rating, matches, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      rating = excluded.rating, matches = excluded.matches, updated_at = excluded.updated_at
+  `);
+  const countSettled = db.prepare(`
+    SELECT COUNT(*) AS n FROM match_participants p JOIN matches m ON m.id = p.match_id
+    WHERE p.user_id = ? AND m.state = 'settled'
+  `);
+
+  // Lazy-seeded running ratings (see the correctness note above).
+  const cache = new Map();
+  const ratingIn = (userId, storedBefore) => (cache.has(userId) ? cache.get(userId) : storedBefore);
+  const groupNameOf = (gid) => (gid
+    ? (db.prepare('SELECT name FROM competition_groups WHERE id = ?').get(gid)?.name ?? null)
+    : null);
+
+  const notifications = []; // { userId, payload } — emitted inside the transaction
+  let recomputed = 0;       // matches actually rewritten (a no-op replay is neither)
+
+  db.transaction(() => {
+    for (const match of replayWindow) {
+      const roster = loadRoster.all(match.id);
+      const isTarget = match.id === target.id;
+      const groupName = groupNameOf(match.group_id);
+      const oldByUser = new Map(
+        roster.map((r) => [r.user_id, { after: r.rating_after, delta: r.delta }]),
+      );
+
+      let results;
+      if (isTarget) {
+        // Keep the audit rows, move no rating: delta 0, after = before (unchanged).
+        results = roster.map((r) => {
+          const before = ratingIn(r.user_id, r.rating_before);
+          return { userId: r.user_id, ratingBefore: before, ratingAfter: before, delta: 0 };
+        });
+      } else {
+        const players = roster.map((r) => ({
+          userId: r.user_id,
+          rating: ratingIn(r.user_id, r.rating_before),
+          score: r.score ?? 0,
+        }));
+        const marginScale = marginScaleFor(match.scope_start, match.scope_end);
+        results = settleFfa(players, match.k_factor, marginScale);
+      }
+
+      // A match in the settle-order window that shares no changed player with the
+      // target replays to the identical ledger (settleFfa is deterministic on the
+      // stored score + unchanged seed). Such a match moved nothing, so it must not
+      // be stamped recomputed and its players must not be told "your rating
+      // changed" — that would be a false correction on an untouched group.
+      let matchChanged = false;
+
+      for (const r of results) {
+        writeParticipant.run(r.ratingBefore, r.ratingAfter, r.delta, match.id, r.userId);
+        cache.set(r.userId, r.ratingAfter);
+        const old = oldByUser.get(r.userId);
+        const userChanged = old.after !== r.ratingAfter || old.delta !== r.delta;
+        if (userChanged) matchChanged = true;
+        // Notify a player only when their ledger actually moved. The target's own
+        // roster always notifies (the match they were in is gone), even for a
+        // player whose rating happens not to shift.
+        if (!isTarget && !userChanged) continue;
+        // Self-contained payload (ids AND names) — the toast never reads back into
+        // live tables. Carries old vs new so the user sees the correction.
+        notifications.push({
+          userId: r.userId,
+          payload: {
+            match_id: match.id,
+            title: match.title,
+            group_id: match.group_id,
+            group_name: groupName,
+            mode: match.mode,
+            period_key: match.period_key,
+            scope_start: match.scope_start,
+            scope_end: match.scope_end,
+            invalidated: isTarget,
+            // The match whose invalidation triggered this — same for every row.
+            invalidated_match_id: target.id,
+            invalidated_title: target.title,
+            old_rating: old.after,
+            new_rating: r.ratingAfter,
+            old_delta: old.delta,
+            new_delta: r.delta,
+          },
+        });
+      }
+
+      if (isTarget) {
+        stampInvalidated.run(match.id);
+      } else if (matchChanged) {
+        stampRecomputed.run(now, RECOMPUTE_REASON, match.id);
+        recomputed += 1;
+      }
+    }
+
+    // Rebuild the rating cache for every user the replay touched. The window is
+    // the tail of settle order, so a touched user's final running rating IS their
+    // latest settled rating. `matches` is recounted live — the target dropped out
+    // of 'settled', so it is excluded automatically.
+    for (const [userId, rating] of cache) {
+      upsertRating.run(userId, rating, countSettled.get(userId).n, now);
+    }
+
+    for (const n of notifications) createNotification(n.userId, TYPES.MATCH_RECOMPUTED, n.payload);
+  })();
+
+  return {
+    invalidated: target.id,
+    matches_recomputed: recomputed,
+    participants_notified: notifications.length,
+  };
+}
+
 // ── the ticker ───────────────────────────────────────────────────────────────
 
 // One pass: open what should exist, lock what has started, settle what has
@@ -546,5 +714,6 @@ module.exports = {
   dayIsOff, offRanges, offRangesForMatch, wholeWeekOff,
   metricsFor, scoreFor, scoresForMany, ratingOf, ratingsForMany,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal, lockDueLobbies,
-  joinDeadline, settleMatch, settleDueMatches, tick, startTicker, stopTicker,
+  joinDeadline, settleMatch, settleDueMatches, invalidateMatch, MAX_INVALIDATE_DEPTH,
+  tick, startTicker, stopTicker,
 };

@@ -1050,6 +1050,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .ntf-badge[data-tone="up"]      { background: var(--success-bg); border-color: var(--success-bd); color: var(--success-fg); }
 .ntf-badge[data-tone="down"]    { background: var(--danger-bg);  border-color: var(--danger-bd);  color: var(--danger-fg); }
 .ntf-badge[data-tone="neutral"] { background: var(--accent-bg);  border-color: var(--accent);     color: var(--accent); }
+.ntf-badge[data-tone="warn"]    { background: var(--warn-bg);    border-color: var(--warn-bd);    color: var(--warn-fg); }
 
 /* Body */
 .ntf-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1099,6 +1100,8 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .ntf-toast-text { font-size: 0.76rem; color: var(--text-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A generic match toast is tappable to open the reveal — flag it. */
 .ntf-toast[data-reveal="true"]::after { content: "reveal"; margin-left: auto; flex: 0 0 auto; font-size: 0.66rem; font-weight: 800; color: var(--accent); letter-spacing: .02em; }
+/* Invalidation-context toast: warn-tinted icon, deliberately low-key. */
+.ntf-toast[data-tone="warn"] .ntf-toast-icon { color: var(--warn-fg); }
 
 /* ── Fullscreen match reveal (issue #32; docs/notifications-reveals.md) ──────
    A dark, cinematic moment in BOTH themes (deliberate single visual world):
@@ -1524,8 +1527,36 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .cmp-state.pending { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-bd); }
 .cmp-state.open { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-bd); }
 .cmp-state.cancelled { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
+.cmp-state.invalidated { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
 .cmp-match-when { font-size: 0.72rem; color: var(--text-muted); }
 .cmp-cancelled { font-size: 0.78rem; color: var(--text-muted); }
+
+/* Warning marker on a recomputed match card. Reuses the badge info popover
+   (.badge-popover) for the edge-safe positioning + tap/hover behaviour; only the
+   warn colour and single-line body are layered on here. */
+.cmp-info { position: relative; display: inline-flex; }
+.cmp-info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px; border: none; background: none; cursor: pointer;
+  color: var(--warn-fg); border-radius: 50%;
+}
+.cmp-info-pop {
+  max-width: 240px; font-size: 0.74rem; line-height: 1.35; font-weight: 400;
+  color: var(--text-sec); border-color: var(--warn-bd);
+}
+.cmp-info-pop::after { border-top-color: var(--warn-bd); }
+.cmp-info-pop strong { color: var(--warn-fg); font-weight: 700; }
+
+/* ── admin matches page ──────────────────────────────────────────────────── */
+.admin-match-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
+.admin-match-name { flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.admin-match-metrics {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 12px;
+  font-size: 0.72rem; color: var(--text-muted);
+}
+.admin-match-metrics span { display: inline-flex; align-items: center; gap: 4px; }
+.admin-match-body { padding: 4px 12px 12px; }
+.admin-match-actions { display: flex; align-items: center; margin-top: 10px; }
 
 /* Standings */
 .cmp-standings { display: flex; flex-direction: column; gap: 6px; }

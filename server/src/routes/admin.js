@@ -17,6 +17,8 @@ const db      = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { isValidPassword } = require('../password');
 const { ID_RE, listCoffeesAdmin, listClasses, getClass } = require('../coffees');
+const { invalidateMatch, MAX_INVALIDATE_DEPTH } = require('../competitions');
+const { matchPayload } = require('../match-view');
 
 const router = express.Router();
 
@@ -273,6 +275,58 @@ router.delete('/coffee-classes/:id', (req, res) => {
   }
   db.prepare('DELETE FROM coffee_classes WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ── match invalidation (super-admin only) ────────────────────────────────────
+
+// Every finished match (settled / invalidated / cancelled — never a running
+// lobby), newest-ending first. This is the admin matches review list. Each row
+// is a normal match payload plus:
+//   - settled_after: how many settled matches follow it in settle order (null
+//     for a non-settled row)
+//   - invalidatable: whether it may be invalidated now (settled AND within the
+//     depth cap). The client disables the button and shows the reason otherwise.
+// Ordered by scope_end DESC so the recent, invalidatable matches surface first.
+router.get('/matches', (req, res) => {
+  const rows = db.prepare(`
+    SELECT * FROM matches
+    WHERE state IN ('settled', 'invalidated', 'cancelled')
+    ORDER BY scope_end DESC
+  `).all();
+
+  // A settled match is invalidatable iff at most MAX_INVALIDATE_DEPTH settled
+  // matches follow it. Derive the after-count from the settle-ordered id list.
+  const settledOrder = db.prepare(
+    "SELECT id FROM matches WHERE state = 'settled' ORDER BY settled_at, id",
+  ).all().map((r) => r.id);
+  const afterCount = new Map();
+  settledOrder.forEach((id, i) => afterCount.set(id, settledOrder.length - 1 - i));
+
+  const matches = rows.map((m) => {
+    const settledAfter = afterCount.has(m.id) ? afterCount.get(m.id) : null;
+    return {
+      ...matchPayload(m, { viewerId: req.user.id }),
+      settled_after: settledAfter,
+      invalidatable: m.state === 'settled' && settledAfter <= MAX_INVALIDATE_DEPTH,
+    };
+  });
+
+  res.json({ matches, max_depth: MAX_INVALIDATE_DEPTH });
+});
+
+// Invalidate a settled match and replay everything after it. Super-admin only —
+// requireAdmin lets any admin this far, so re-gate here (mirrors manageBlock's
+// super-admin rule). A regular admin gets 403.
+router.post('/matches/:id/invalidate', (req, res) => {
+  if (req.actor.is_super_admin !== 1) {
+    return res.status(403).json({ error: 'Only the primary admin can invalidate matches' });
+  }
+  try {
+    res.json(invalidateMatch(req.params.id, Date.now()));
+  } catch (e) {
+    const msg = e.message || 'Could not invalidate match';
+    res.status(msg === 'Match not found' ? 404 : 400).json({ error: msg });
+  }
 });
 
 module.exports = router;

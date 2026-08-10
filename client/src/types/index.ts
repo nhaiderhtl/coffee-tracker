@@ -213,7 +213,7 @@ export interface CasualtiesData {
 // frontend render catalog (src/notifications/catalog.tsx) is the only thing that
 // interprets it, keyed by `type`, with a default renderer for unknown types.
 // `Notification` is a DOM global, hence `AppNotification`.
-export type NotificationType = 'match_end' | 'achievement' | 'badge';
+export type NotificationType = 'match_end' | 'match_recomputed' | 'achievement' | 'badge';
 
 export interface AppNotification {
   id: string;
@@ -370,7 +370,7 @@ export type MatchMode = 'daily' | 'weekly' | 'ondemand' | '1v1';
 // pending   running, roster locked
 // settled   deltas written and applied to every participant's rating
 // cancelled never reached a legal roster; no rating changed hands
-export type MatchState = 'open' | 'pending' | 'settled' | 'cancelled';
+export type MatchState = 'open' | 'pending' | 'settled' | 'cancelled' | 'invalidated';
 
 export interface CompetitionGroup {
   id: string;
@@ -437,8 +437,25 @@ export interface Match {
   k_factor: number;
   created_at: number;
   settled_at: number | null;
+  // Set once a replay rewrote this match's ledger because an earlier match was
+  // invalidated (recompute_reason is a short why). Null means never recomputed.
+  recomputed_at: number | null;
+  recompute_reason: string | null;
   participant_count: number;
   participants: MatchParticipant[];
+}
+
+// A match as the admin matches page sees it: the normal payload plus how many
+// settled matches follow it and whether it may be invalidated now (within the
+// depth cap). See GET /api/admin/matches.
+export interface AdminMatch extends Match {
+  settled_after: number | null;
+  invalidatable: boolean;
+}
+
+export interface AdminMatchesResponse {
+  matches: AdminMatch[];
+  max_depth: number;
 }
 
 export interface CompetitionsResponse {

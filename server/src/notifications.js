@@ -15,6 +15,10 @@ const TYPES = {
   ACHIEVEMENT: 'achievement',
   BADGE: 'badge',
   MATCH_END: 'match_end',
+  // A settled match's ledger was rewritten because an admin invalidated an
+  // earlier match. The original MATCH_END row stays (immutable); this is the
+  // correction that carries the old vs new rating (see invalidateMatch).
+  MATCH_RECOMPUTED: 'match_recomputed',
 };
 const KNOWN = new Set(Object.values(TYPES));
 

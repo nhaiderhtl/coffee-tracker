@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { useNotifications } from '../hooks/useNotifications';
 import { toastFor, renderNotification } from '../notifications/catalog';
@@ -12,7 +12,7 @@ import type { AppNotification } from '../types';
 // (docs/notifications-reveals.md).
 const TOAST_MS = 4500;
 
-interface ToastItem { key: string; icon: string; title: string; body: string; reveal?: AppNotification }
+interface ToastItem { key: string; icon: string; title: string; body: ReactNode; tone?: 'warn'; reveal?: AppNotification }
 
 export function NotificationToaster() {
   const { data } = useNotifications();
@@ -77,7 +77,7 @@ function Toast({ t, onDone, onTap }: { t: ToastItem; onDone: () => void; onTap?:
   }, []);
   const click = () => { if (onTap) onTap(); done.current(); };
   return (
-    <div className="ntf-toast" data-reveal={t.reveal ? 'true' : undefined} role="status" onClick={click}>
+    <div className="ntf-toast" data-reveal={t.reveal ? 'true' : undefined} data-tone={t.tone} role="status" onClick={click}>
       <span className="ntf-toast-icon"><Icon name={t.icon} size={20} /></span>
       <div className="ntf-toast-body">
         <div className="ntf-toast-title">{t.title}</div>

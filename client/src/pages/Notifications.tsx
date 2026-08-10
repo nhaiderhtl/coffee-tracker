@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { useNotifications, useMarkNotificationsRead } from '../hooks/useNotifications';
-import { renderNotification, ordinal, type RenderedNotification } from '../notifications/catalog';
+import { renderNotification, ordinal, highlight, type RenderedNotification } from '../notifications/catalog';
 import { useReveals } from '../notifications/RevealProvider';
 import type { AppNotification } from '../types';
 
@@ -61,6 +61,22 @@ function CardBody({ r, time, generic }: { r: RenderedNotification; time: string;
             <span className="ntf-time">{time}</span>
           </div>
           <div className="ntf-desc">{r.description}</div>
+        </div>
+      </>
+    );
+  }
+  if (r.kind === 'recompute') {
+    return (
+      <>
+        <span className="ntf-badge" data-tone="warn"><Icon name={r.icon} size={20} /></span>
+        <div className="ntf-main">
+          <div className="ntf-head">
+            <span className="ntf-title">{r.title}</span>
+            <span className="ntf-time">{time}</span>
+          </div>
+          <div className="ntf-desc">
+            {highlight(`**${r.invalidatedTitle}** was removed by an admin. Your rating changed from **${r.oldRating}** to **${r.newRating}**.`)}
+          </div>
         </div>
       </>
     );
