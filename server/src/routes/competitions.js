@@ -4,8 +4,9 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE } = require('../competition-core');
-const { groupOf, scoresForMany, ratingsForMany, joinDeadline, offRangesForMatch } = require('../competitions');
+const { groupOf, joinDeadline } = require('../competitions');
 const { badgesForMany } = require('../profile');
+const { matchPayload } = require('../match-view');
 
 const router = express.Router();
 
@@ -26,82 +27,6 @@ function matchOr404(res, id) {
     return null;
   }
   return match;
-}
-
-// Participants with everything the UI needs. For a match that has not settled
-// yet, `points` is computed live from the window so far; for a settled one it is
-// the stored value, which is the number the deltas were actually derived from.
-//
-// Points are a linear, uncapped integer (docs/competitions-rating-v2.md) — there
-// is no maximum, so nothing here or in the client may render one as a fraction
-// of a whole.
-//
-// The live path scores and rates the whole roster in two queries rather than
-// two per player: a match list is dozens of matches deep, so the per-user form
-// made one page load hundreds of round trips.
-function participantsOf(match, viewerId) {
-  const rows = db.prepare(`
-    SELECT p.*, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id
-    FROM match_participants p
-    JOIN users u ON u.id = p.user_id
-    WHERE p.match_id = ?
-    ORDER BY p.joined_at
-  `).all(match.id);
-
-  const settled = match.state === 'settled';
-  const userIds = rows.map((r) => r.user_id);
-  const livePoints = settled
-    ? new Map()
-    : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end),
-                    offRangesForMatch(match));
-  const liveRatings = settled ? new Map() : ratingsForMany(userIds);
-  const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
-  const badges = badgesForMany(userIds, viewerId);
-
-  const enriched = rows.map((r) => ({
-    user_id: r.user_id,
-    username: r.username,
-    avatar: r.avatar,
-    profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
-    profile_image: variants.get(r.profile_image_id) ?? null,
-    badges: badges.get(r.user_id) ?? [],
-    joined_at: r.joined_at,
-    // The stored `score` column IS the points a settled window was worth. A
-    // match settled under v1 holds a 0..1000 number from the old curve instead —
-    // history is immutable and is never re-derived.
-    points: settled ? (r.score ?? 0) : (livePoints.get(r.user_id) ?? 0),
-    rating_before: r.rating_before,
-    rating_after: r.rating_after,
-    delta: r.delta,
-    // A live match shows the rating a player is carrying INTO it; a settled
-    // one shows what they had when it settled.
-    current_rating: settled ? r.rating_after : (liveRatings.get(r.user_id) ?? BASE_RATING),
-  }));
-
-  // Standings order: most points first.
-  return enriched.sort((a, b) => b.points - a.points);
-}
-
-function matchPayload(match, { withParticipants = true, viewerId } = {}) {
-  const participants = withParticipants ? participantsOf(match, viewerId) : null;
-  const base = {
-    id: match.id,
-    group_id: match.group_id,
-    mode: match.mode,
-    period_key: match.period_key,
-    title: match.title,
-    creator_id: match.creator_id,
-    scope_start: match.scope_start,
-    scope_end: match.scope_end,
-    state: match.state,
-    k_factor: match.k_factor,
-    created_at: match.created_at,
-    settled_at: match.settled_at,
-    participant_count: participants
-      ? participants.length
-      : db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?').get(match.id).c,
-  };
-  return participants ? { ...base, participants } : base;
 }
 
 // GET /api/competitions — the caller's group's matches (if any) and the global
@@ -125,7 +50,7 @@ router.get('/', requireAuth, (req, res) => {
     };
     groupBuckets.open = rows.filter((m) => m.state === 'open').map((m) => matchPayload(m, { viewerId: req.user.id }));
     groupBuckets.live = rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m, { viewerId: req.user.id }));
-    groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m, { viewerId: req.user.id }));
+    groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled' || m.state === 'invalidated').map((m) => matchPayload(m, { viewerId: req.user.id }));
   }
 
   // Open global lobbies are browsable by anyone; a caller's running/finished
@@ -144,7 +69,7 @@ router.get('/', requireAuth, (req, res) => {
     global: {
       open: globalOpen.map((m) => matchPayload(m, { viewerId: req.user.id })),
       live: globalMine.filter((m) => m.state === 'pending').map((m) => matchPayload(m, { viewerId: req.user.id })),
-      settled: globalMine.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m, { viewerId: req.user.id })),
+      settled: globalMine.filter((m) => m.state === 'settled' || m.state === 'cancelled' || m.state === 'invalidated').map((m) => matchPayload(m, { viewerId: req.user.id })),
     },
     my_rating: rating ? rating.rating : BASE_RATING,
     my_matches: rating ? rating.matches : 0,
@@ -250,9 +175,11 @@ router.get('/history', requireAuth, (req, res) => {
 
   let groupHistory = [];
   if (group) {
+    // Include invalidated matches so the public history still shows them (marked
+    // with the (i) recompute note), even though they now move no rating.
     const rows = db.prepare(`
       SELECT * FROM matches
-      WHERE group_id = ? AND state = 'settled'
+      WHERE group_id = ? AND state IN ('settled', 'invalidated')
       ORDER BY settled_at DESC LIMIT 40
     `).all(group.id);
     groupHistory = rows.map((m) => matchPayload(m, { viewerId: req.user.id }));

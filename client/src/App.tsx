@@ -19,6 +19,7 @@ import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import { UserProfile } from './pages/UserProfile';
 import { AdminCoffees } from './pages/AdminCoffees';
+import { AdminMatches } from './pages/AdminMatches';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
 import { RevealProvider } from './notifications/RevealProvider';
@@ -101,6 +102,10 @@ export function App() {
           {/* Admin coffee catalog (issue #77). AdminCoffees redirects non-admins;
               the API enforces admin on every catalog write regardless. */}
           <Route path="/admin/coffees" element={<RequireAuth><AdminCoffees /></RequireAuth>} />
+          {/* Admin match review + invalidation (super-admin only). AdminMatches
+              redirects non-super-admins; the API enforces super-admin on the
+              invalidate write regardless. */}
+          <Route path="/admin/matches" element={<RequireAuth><AdminMatches /></RequireAuth>} />
           <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />

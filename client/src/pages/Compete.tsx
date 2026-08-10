@@ -41,11 +41,11 @@ const SECTIONS: Record<CompeteScope, { id: Section; label: string }[]> = {
   ],
 };
 
-const MODE_LABEL: Record<MatchMode, string> = {
+export const MODE_LABEL: Record<MatchMode, string> = {
   daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1',
 };
 
-const MODE_ICON: Record<MatchMode, string> = {
+export const MODE_ICON: Record<MatchMode, string> = {
   daily: 'calendar', weekly: 'calendar', ondemand: 'bolt', '1v1': 'scale',
 };
 
@@ -450,9 +450,33 @@ function MatchStandings({ match }: { match: Match }) {
   );
 }
 
+// A small (i) marker with a popover: hover on desktop, tap on mobile. Used on a
+// match card whose ledger was rewritten by a replay (recomputed_at set).
+function InfoMarker({ text }: { text: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span
+      className="cmp-info"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="cmp-info-btn"
+        aria-label="Why this match changed"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+      >
+        <Icon name="info" size={13} />
+      </button>
+      {open && <span className="cmp-info-pop" role="tooltip">{text}</span>}
+    </span>
+  );
+}
+
 /* ── one match card ────────────────────────────────────────────────────────── */
 
-function MatchCard({ match, now, onJoin, onLeave, busy }: {
+export function MatchCard({ match, now, onJoin, onLeave, busy }: {
   match: Match;
   // The parent's single ticking clock (issue #65). One clock for the whole list
   // so a card's predicted state and the section it is bucketed into can never
@@ -466,7 +490,7 @@ function MatchCard({ match, now, onJoin, onLeave, busy }: {
   const inMatch = match.participants.some(p => p.user_id === userId);
   const started = match.scope_start <= now;
   const ended = match.scope_end <= now;
-  const isDone = match.state === 'settled' || match.state === 'cancelled';
+  const isDone = match.state === 'settled' || match.state === 'cancelled' || match.state === 'invalidated';
 
   // Transitions the client predicts while the server's scheduler is still catching
   // up (issue #65). Both are shown with a spinning pill so it reads as "moving",
@@ -514,6 +538,9 @@ function MatchCard({ match, now, onJoin, onLeave, busy }: {
           <Icon name={MODE_ICON[match.mode]} size={13} /> {MODE_LABEL[match.mode]}
         </span>
         {match.title && <span className="cmp-match-title">{match.title}</span>}
+        {match.recomputed_at != null && (
+          <InfoMarker text="This match's rating was recalculated after a match was invalidated." />
+        )}
         <span className={`cmp-state ${pillClass}`}>
           {transitioning && <Icon name="spinner" size={10} className="cmp-state-spin" />}
           {pillLabel}

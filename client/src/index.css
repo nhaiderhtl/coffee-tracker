@@ -1524,8 +1524,39 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .cmp-state.pending { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-bd); }
 .cmp-state.open { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-bd); }
 .cmp-state.cancelled { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
+.cmp-state.invalidated { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
 .cmp-match-when { font-size: 0.72rem; color: var(--text-muted); }
 .cmp-cancelled { font-size: 0.78rem; color: var(--text-muted); }
+
+/* (i) marker on a recomputed match card: hover (desktop) or tap (mobile) pops a
+   one-line note explaining the recalculation. */
+.cmp-info { position: relative; display: inline-flex; }
+.cmp-info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px; border: none; background: none; cursor: pointer;
+  color: var(--text-muted); border-radius: 50%;
+}
+.cmp-info-btn:hover { color: var(--accent); }
+.cmp-info-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  width: max-content; max-width: 240px;
+  background: var(--surface2); color: var(--text-sec);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 10px; font-size: 0.72rem; line-height: 1.35; font-weight: 400;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.cmp-info-pop strong { color: var(--text-primary); font-weight: 700; }
+
+/* ── admin matches page ──────────────────────────────────────────────────── */
+.admin-match-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
+.admin-match-name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.admin-match-metrics {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 12px;
+  font-size: 0.72rem; color: var(--text-muted);
+}
+.admin-match-metrics span { display: inline-flex; align-items: center; gap: 4px; }
+.admin-match-body { padding: 4px 12px 12px; }
+.admin-match-actions { display: flex; align-items: center; margin-top: 10px; }
 
 /* Standings */
 .cmp-standings { display: flex; flex-direction: column; gap: 6px; }

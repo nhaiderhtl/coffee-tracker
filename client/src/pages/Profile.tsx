@@ -290,6 +290,7 @@ function AdminActions({ u }: { u: AdminUser }) {
 // is an admin (guard at the call site); the endpoints also enforce it.
 function AdminCard() {
   const navigate = useNavigate();
+  const meIsSuper = useAuthStore(s => s.user?.is_super_admin === 1);
   const [searchInput, setSearchInput] = useState('');
   const [activeUsername, setActiveUsername] = useState('');
 
@@ -322,6 +323,11 @@ function AdminCard() {
         <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate('/admin/coffees')}>
           Manage coffee catalog
         </button>
+        {meIsSuper && (
+          <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate('/admin/matches')}>
+            Manage matches
+          </button>
+        )}
       </div>
 
       {isLoading && <div className="page-loading">Searching…</div>}

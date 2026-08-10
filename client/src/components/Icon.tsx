@@ -10,7 +10,7 @@ import {
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight, FaLock, FaTrash, FaRegCopy,
   FaLayerGroup, FaImages,
   FaChevronUp, FaChevronDown, FaGithub, FaGlobe, FaSpinner, FaBell,
-  FaGem, FaRankingStar, FaSyringe,
+  FaGem, FaRankingStar, FaSyringe, FaCircleInfo,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
 
@@ -72,6 +72,7 @@ const ICONS: Record<string, IconType> = {
   // ── Status / UI chrome ──
   check: FaCheck,
   'check-circle': FaCircleCheck,
+  info: FaCircleInfo,
   spinner: FaSpinner,
   'square-empty': FaRegSquare,
   skull: FaSkull,
