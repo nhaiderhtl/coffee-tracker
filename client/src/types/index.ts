@@ -161,6 +161,9 @@ export interface Task {
   completed: boolean;
 }
 
+// The /api/goals shapes. No client code calls those endpoints since issue #83
+// removed the Goals tab; kept so that rehoming Goals (#17, #74) does not have to
+// re-derive the contract, which the server still serves unchanged.
 export interface GoalsResponse {
   date: string;
   tasks: Task[];
@@ -292,9 +295,9 @@ export interface PublicProfile {
 }
 
 /* ── API response envelopes ──────────────────────────────────────────────────
- * Shapes returned by the Express server for the non-entity endpoints. These are
- * currently re-declared inline in several pages (and typed as `any` in Goals);
- * defining them here keeps every caller aligned with the server contract. */
+ * Shapes returned by the Express server for the non-entity endpoints. Some are
+ * still re-declared inline in individual pages; defining them here keeps every
+ * caller aligned with the server contract. */
 
 export interface AuthResponse {
   token: string;

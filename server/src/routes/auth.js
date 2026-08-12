@@ -95,6 +95,9 @@ router.post('/register', authLimiter, (req, res) => {
   db.prepare('INSERT INTO user_combos (user_id) VALUES (?)').run(id);
 
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(id));
+  // The Elo ladder lists every user, not just those who have played, so a
+  // signup changes the board everyone else is looking at.
+  broadcast([['rankings'], ['competitions']], undefined, { except: id });
   res.json({ token: makeToken(user), user });
 });
 
