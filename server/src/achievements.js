@@ -71,14 +71,15 @@ function unlockBadge(userId, badgeId) {
   return def;
 }
 
-// Badge requirements are declarative data, and these two functions are the only
-// things that read them: this one handles `type: 'achievement'` and
-// checkBadgeForRanking below handles `type: 'ranking'`. Any other type is
-// silently inert — no error, no failing test, the badge simply never unlocks.
-// `challenge_champion` has sat unearnable behind `type: 'challenges_won'` for
-// exactly that reason. When adding a requirement type, add its evaluator here
-// in the same change, and check every `achievementId` exists in
-// data/achievements.js — a typo fails the same silent way.
+// Badge requirements are declarative data, and only two functions read them:
+// this one handles `type: 'achievement'` and checkBadgeForRanking below handles
+// `type: 'ranking'`. Any other type is silently inert — no error, no failing
+// test, the badge simply never unlocks. (`challenges_won` is such a type, but
+// that badge is fine: checkAfterChallengeWin awards it imperatively.)
+//
+// So when adding a requirement type, add its evaluator here in the same change,
+// and check every `achievementId` exists in data/achievements.js — a typo fails
+// the same silent way, and neither typecheck nor the suite will say a word.
 function checkBadgesForAchievement(userId, achievementId) {
   const notifs = [];
   for (const badge of BADGES) {
@@ -180,6 +181,9 @@ function checkAfterCoffeeLog(userId) {
   // Combo
   unlocked.push(...checkCombo(userId, todayEntries));
 
+  // Day streak
+  unlocked.push(...checkDayStreak(userId, allEntries, tz, today));
+
   // Secret: decaf spy
   const last2 = allEntries.slice(-2);
   if (last2.length === 2 && last2[0].coffee_id === 'hot_chocolate' && last2[1].coffee_id === 'espresso') {
@@ -202,6 +206,44 @@ function checkAfterCoffeeLog(userId) {
   }
 
   return unlocked;
+}
+
+// Consecutive local days ending today that have at least one coffee in them.
+//
+// This used to be a *goal* streak, advanced only by POST /api/goals/complete.
+// Issue #83 removed the Goals UI and with it that endpoint's only caller, so
+// `user_streaks` stopped being written at all: every user's "Day Streak" tile
+// sat at 0 forever and streak_3/7/30 became unreachable. Reading the streak off
+// the coffee log instead is what the UI already claims it is — a day streak,
+// under a flame — and it needs no goals to exist.
+//
+// Counting back from today is safe because this only runs right after a coffee
+// was logged, so today is always present. `last_goal_date` keeps its column
+// name (renaming it would be a migration for no behavioural gain); it now means
+// "last day counted into the streak".
+function checkDayStreak(userId, allEntries, tz, today) {
+  const days = new Set(allEntries.map((e) => localDateStr(e.logged_at, tz)));
+
+  let current = 0;
+  for (let day = today; days.has(day); day = yesterdayOf(day)) current += 1;
+
+  const row = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
+  const longest = Math.max(row?.longest_streak ?? 0, current);
+  if (row) {
+    db.prepare(
+      'UPDATE user_streaks SET current_streak = ?, longest_streak = ?, last_goal_date = ? WHERE user_id = ?'
+    ).run(current, longest, today, userId);
+  } else if (db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId)) {
+    // Registration seeds a row, so this only runs for a user created outside
+    // that path. Checking the parent first keeps the FOREIGN KEY from throwing
+    // when the account was deleted while this request was still in flight —
+    // photo processing is async, so that window is real, not theoretical.
+    db.prepare(
+      'INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_goal_date) VALUES (?, ?, ?, ?)'
+    ).run(userId, current, longest, today);
+  }
+
+  return checkCounterMilestones(userId, { day_streak: current });
 }
 
 function checkCombo(userId, todayEntries) {
@@ -260,13 +302,15 @@ function checkCoffeeLoop(userId, allEntries, tz) {
   return [];
 }
 
-// 🔴 CURRENTLY UNREACHABLE as of issue #83. This runs only from
-// POST /api/goals/complete, and Stats.tsx was that endpoint's only caller until
-// #83 removed the Goals tab. Nothing in the client calls it now, so everything
-// below is dead in practice: `first_goal_complete`, `goals_10`, the goal_streak
-// counter milestones, and the `on_target` / `goal_getter` badges that hang off
-// them. The code is kept, not deleted, because whether Goals is retired or just
-// rehomed is still open (#17, #74) — restore a caller and this all works again.
+// UNREACHABLE as of issue #83: this runs only from POST /api/goals/complete,
+// whose only caller was the Goals tab that #83 removed.
+//
+// What used to depend on it has been moved off or retired rather than left to
+// rot: the day streak is now derived from the coffee log (checkDayStreak), and
+// `first_goal_complete` / `goals_10` plus the `goal_getter` badge are marked
+// `retired` so they stay visible to whoever already earned them without being
+// advertised to anyone else. The code below is kept, not deleted, so that
+// rehoming Goals (#17, #74) only needs a caller restored.
 function checkAfterGoalsComplete(userId) {
   const unlocked = [];
   const tz = getUserTz(db, userId);

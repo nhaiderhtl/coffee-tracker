@@ -104,7 +104,7 @@ export interface User {
 
 // Which running total a milestone counts toward. Server-defined — see the
 // `progress` block in server/src/data/achievements.js.
-export type ProgressMetric = 'total_cups' | 'total_caffeine' | 'unique_types' | 'goal_streak';
+export type ProgressMetric = 'total_cups' | 'total_caffeine' | 'unique_types' | 'day_streak';
 
 export interface Achievement {
   id: string;

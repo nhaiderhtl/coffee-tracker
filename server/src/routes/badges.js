@@ -12,7 +12,11 @@ router.get('/', requireAuth, (req, res) => {
   ).all(req.user.id);
   const unlockedMap = Object.fromEntries(unlocked.map(u => [u.badge_id, u.unlocked_at]));
 
-  const result = BADGES.map(b => {
+  // A retired badge (one whose unlock path no longer exists — see `retired` in
+  // data/badges.js) is dropped from the collection unless the viewer earned it
+  // while it was live. Owners keep it; nobody else is shown a badge they could
+  // never get.
+  const result = BADGES.filter(b => !b.retired || unlockedMap[b.id]).map(b => {
     const isUnlocked = !!unlockedMap[b.id];
     if (b.secret && !isUnlocked) {
       return {

@@ -12,7 +12,9 @@ router.get('/', requireAuth, (req, res) => {
   ).all(req.user.id);
   const unlockedMap = Object.fromEntries(unlocked.map(u => [u.achievement_id, u.unlocked_at]));
 
-  const result = ACHIEVEMENTS.map(a => {
+  // Retired achievements (goals, issue #83) stay listed only for the users who
+  // already earned them — see the same rule in routes/badges.js.
+  const result = ACHIEVEMENTS.filter(a => !a.retired || unlockedMap[a.id]).map(a => {
     const isUnlocked = !!unlockedMap[a.id];
     // Hide secret achievements that haven't been unlocked
     if (a.secret && !isUnlocked) {

@@ -152,32 +152,36 @@ const ACHIEVEMENTS = [
   },
 
   // ── Streaks ────────────────────────────────────────────────────────────────
+  // The streak counts consecutive local days with at least one coffee. It used
+  // to count consecutive days of *completing daily goals*, which stopped
+  // advancing the moment issue #83 removed the Goals UI — the metric was renamed
+  // from `goal_streak` to `day_streak` along with the source it reads.
   {
     id: 'streak_3',
     name: 'On a Roll',
-    description: 'Complete daily goals 3 days in a row',
+    description: 'Logged a coffee 3 days in a row',
     icon: 'fire',
     secret: false,
     category: 'streak',
-    progress: { metric: 'goal_streak', target: 3 },
+    progress: { metric: 'day_streak', target: 3 },
   },
   {
     id: 'streak_7',
     name: 'Committed',
-    description: 'Complete daily goals 7 days in a row',
+    description: 'Logged a coffee 7 days in a row',
     icon: 'fire',
     secret: false,
     category: 'streak',
-    progress: { metric: 'goal_streak', target: 7 },
+    progress: { metric: 'day_streak', target: 7 },
   },
   {
     id: 'streak_30',
     name: 'Unstoppable',
-    description: 'Complete daily goals 30 days in a row',
+    description: 'Logged a coffee 30 days in a row',
     icon: 'fire',
     secret: false,
     category: 'streak',
-    progress: { metric: 'goal_streak', target: 30 },
+    progress: { metric: 'day_streak', target: 30 },
   },
 
   // ── Combos ─────────────────────────────────────────────────────────────────
@@ -205,6 +209,7 @@ const ACHIEVEMENTS = [
     description: 'Complete all daily goals for the first time',
     icon: 'check-circle',
     secret: false,
+    retired: true,
     category: 'goals',
   },
   {
@@ -213,6 +218,7 @@ const ACHIEVEMENTS = [
     description: 'Complete all daily goals 10 times',
     icon: 'chart',
     secret: false,
+    retired: true,
     category: 'goals',
   },
 

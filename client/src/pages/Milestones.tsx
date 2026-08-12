@@ -26,7 +26,7 @@ export function Milestones() {
     total_cups: stats?.total_cups ?? 0,
     total_caffeine: stats?.total_caffeine ?? 0,
     unique_types: uniqueTypes,
-    goal_streak: streaks?.streak?.current_streak ?? 0,
+    day_streak: streaks?.streak?.current_streak ?? 0,
   };
 
   const milestones = achievements

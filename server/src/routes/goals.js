@@ -104,13 +104,11 @@ router.get('/today', requireAuth, (req, res) => {
 
 // POST /api/goals/complete — evaluate all tasks and award streak if all done
 //
-// 🔴 NO CALLER as of issue #83. Stats.tsx held the only client call to this and
-// #83 removed the Goals tab with it, so the route still mounts and still works
-// but nothing ever hits it. Everything it drives goes cold with it — the
-// goal achievements, the goal_streak milestones, and the on_target /
-// goal_getter badges (see checkAfterGoalsComplete in achievements.js). Left in
-// place because retiring Goals outright vs. rehoming it is undecided (#17,
-// #74); if it is retired, this route and its dependents go together.
+// NO CALLER as of issue #83: Stats.tsx held the only client call and the Goals
+// tab went with it. The route still mounts and still works — nothing hits it.
+// The streak no longer depends on it (it is derived from the coffee log now,
+// see checkDayStreak), and the goal achievements/badge are marked `retired`.
+// Kept so that rehoming Goals (#17, #74) is just a matter of adding a caller.
 router.post('/complete', requireAuth, (req, res) => {
   const tz = getUserTz(db, req.user.id);
   const today = localTodayStr(tz);
