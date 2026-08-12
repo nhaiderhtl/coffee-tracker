@@ -163,6 +163,20 @@ export function AdminPanel() {
           </button>
         </div>
 
+        {/* Match review/invalidation is super-admin only — the same gate the
+            route and the API apply. Kept reachable here because consolidating
+            admin into this panel removed the old Profile entry point. */}
+        {user.is_super_admin === 1 && (
+          <div className="card">
+            <div className="section-label">Competition</div>
+            <button className="card profile-link-card" style={{ marginTop: 8 }} onClick={() => navigate('/admin/matches')}>
+              <span className="profile-link-icon"><Icon name="trophy" size={18} /></span>
+              <span className="profile-link-label">Matches</span>
+              <Icon name="arrow-right" size={14} />
+            </button>
+          </div>
+        )}
+
         <UserManagementSection />
       </main>
     </div>
