@@ -1086,7 +1086,7 @@ function RatingGraph({ personal, currentRating }: {
         </div>
       </div>
 
-      {windowEntries.length === 0 && <p className="buzz-note">No rated matches in this window.</p>}
+      {windowEntries.length === 0 && <p className="buzz-note">No rated matches in this pour.</p>}
     </div>
   );
 }
@@ -1390,7 +1390,7 @@ function GroupGate() {
 
   return (
     <>
-      <div className="empty-state">Competitions run inside a group. Join one to play.</div>
+      <div className="empty-state">Competitions need a crew — join a group to play.</div>
 
       {error && <div className="auth-error">{error}</div>}
 

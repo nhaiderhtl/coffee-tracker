@@ -104,7 +104,7 @@ function RankingsTab() {
                 </div>
               </div>
             ))}
-            {(data?.rankings ?? []).length === 0 && <div className="load-text">No data yet — be the first to brew.</div>}
+            {(data?.rankings ?? []).length === 0 && <div className="load-text">No grounds for a ranking yet.</div>}
           </div>
         )}
       </div>

@@ -230,13 +230,13 @@ function CoffeesTab({ coffees, classes, isLoading }: {
                       </button>
                     </div>
                   ))}
-                  {g.items.length === 0 && <div className="empty-state">No drinks in {g.name}.</div>}
+                  {g.items.length === 0 && <div className="empty-state">Nothing on tap in {g.name}.</div>}
                 </div>
               )}
             </div>
           );
         })}
-        {!isLoading && coffees.length === 0 && <div className="empty-state">No coffees yet.</div>}
+        {!isLoading && coffees.length === 0 && <div className="empty-state">The menu is decaf-initely empty.</div>}
       </div>
 
       {formOpen && (
@@ -367,7 +367,7 @@ function CategoriesTab({ classes, counts }: { classes: CoffeeClass[]; counts: Re
             </button>
           </div>
         ))}
-        {classes.length === 0 && <div className="empty-state">No categories yet.</div>}
+        {classes.length === 0 && <div className="empty-state">No blends sorted yet.</div>}
       </div>
 
       {deleting && (

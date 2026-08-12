@@ -49,7 +49,7 @@ export function Challenges() {
         {isLoading ? (
           <div className="page-loading">Loading…</div>
         ) : community.length === 0 ? (
-          <div className="card"><div className="empty-state">No community challenges right now.</div></div>
+          <div className="card"><div className="empty-state">No challenges brewing right now.</div></div>
         ) : (
           community.map(c => {
             const pct = challengePct(c.community_progress, c.target);

@@ -153,7 +153,7 @@ export function AdminMatches() {
         {isLoading && <div className="page-loading">Loading…</div>}
         <div className="card admin-acc-card">
           {matches.map(m => <MatchRow key={m.id} m={m} now={now} />)}
-          {!isLoading && matches.length === 0 && <div className="empty-state">No finished matches yet.</div>}
+          {!isLoading && matches.length === 0 && <div className="empty-state">Nothing settled yet — still brewing.</div>}
         </div>
       </main>
     </div>
