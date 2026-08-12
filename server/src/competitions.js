@@ -336,14 +336,18 @@ function ensureRecurringMatch(group, mode, now) {
   return matchId;
 }
 
+// Returns how many lobbies it opened, so the ticker knows whether the
+// competition screens changed underneath anyone.
 function ensureRecurringMatches(now = Date.now()) {
   const groups = db.prepare(
     'SELECT id, timezone, active_weekdays, pause_from, pause_to FROM competition_groups'
   ).all();
+  let created = 0;
   for (const group of groups) {
-    ensureRecurringMatch(group, 'daily', now);
-    ensureRecurringMatch(group, 'weekly', now);
+    if (ensureRecurringMatch(group, 'daily', now)) created += 1;
+    if (ensureRecurringMatch(group, 'weekly', now)) created += 1;
   }
+  return created;
 }
 
 // ── locking lobbies ──────────────────────────────────────────────────────────
@@ -378,7 +382,10 @@ function rosterIsLegal(match, participants) {
   return participants.length >= 2;
 }
 
+// Returns how many lobbies changed state (locked or cancelled), for the same
+// reason ensureRecurringMatches counts.
 function lockDueLobbies(now = Date.now()) {
+  let locked = 0;
   const due = db.prepare("SELECT * FROM matches WHERE state = 'open' AND scope_start <= ?").all(now);
   for (const match of due) {
     // A weekly that has started but is still inside its first-day join window
@@ -389,7 +396,9 @@ function lockDueLobbies(now = Date.now()) {
     const nextState = rosterIsLegal(match, participants) ? 'pending' : 'cancelled';
     db.prepare('UPDATE matches SET state = ?, settled_at = ? WHERE id = ?')
       .run(nextState, nextState === 'cancelled' ? now : null, match.id);
+    locked += 1;
   }
+  return locked;
 }
 
 // ── settlement ───────────────────────────────────────────────────────────────
@@ -672,10 +681,17 @@ function invalidateMatch(matchId, now = Date.now()) {
 // possible for a very short user-created match) still gets locked before it is
 // considered for settlement.
 function tick(now = Date.now()) {
-  ensureRecurringMatches(now);
-  lockDueLobbies(now);
+  const opened = ensureRecurringMatches(now);
+  const locked = lockDueLobbies(now);
   settleDueMatches(now);
   purgeOldNotifications(now);
+
+  // A lobby appearing on schedule, or locking when its window starts, is the one
+  // class of change nobody triggered — there is no request to answer with it, so
+  // without a push it stays invisible until the next reload. Settlement pushes
+  // itself (to the participants, who are known there); these two are group-wide,
+  // so they go out untargeted.
+  if (opened > 0 || locked > 0) broadcast([['competitions']]);
 }
 
 // Bounded growth for the notifications table (issue #32): drop rows the user

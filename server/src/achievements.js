@@ -4,11 +4,22 @@ const { ACHIEVEMENTS } = require('./data/achievements');
 const { BADGES } = require('./data/badges');
 const { getUserTz, localDateStr, localTodayStr, localParts } = require('./time');
 const { createNotification, TYPES } = require('./notifications');
+const { broadcast } = require('./events');
 
 // Civil day/hour for streaks and time-of-day achievements are evaluated in the
 // user's own timezone. See docs/time-and-timezones.md.
 function yesterdayOf(dateStr) {
   return new Date(Date.parse(`${dateStr}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+
+// An unlock changes the owner's collection pages, and it can happen down any
+// path — logging a coffee, settling a match, comparing, completing a challenge.
+// Pushing from each call site would mean remembering to, so it is done here and
+// in unlockBadge instead: every unlock in the app goes through one of the two.
+// The notification toast is a separate event (createNotification); this is what
+// keeps the Badges and Achievements screens themselves from going stale.
+function pushCollections(userId) {
+  broadcast([['badges'], ['achievements']], [userId]);
 }
 
 function unlockAchievement(userId, achievementId) {
@@ -32,6 +43,7 @@ function unlockAchievement(userId, achievementId) {
   });
 
   const badges = checkBadgesForAchievement(userId, achievementId);
+  pushCollections(userId);
   return { def, badges };
 }
 
@@ -68,6 +80,7 @@ function unlockBadge(userId, badgeId) {
   createNotification(userId, TYPES.BADGE, {
     id: def.id, name: def.name, icon: def.icon, description: def.description,
   });
+  pushCollections(userId);
   return def;
 }
 
@@ -313,26 +326,18 @@ function checkCoffeeLoop(userId, allEntries, tz) {
 // rehoming Goals (#17, #74) only needs a caller restored.
 function checkAfterGoalsComplete(userId) {
   const unlocked = [];
-  const tz = getUserTz(db, userId);
-  const today = localTodayStr(tz);
-  const streak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
+  const streak = db.prepare('SELECT goals_completed FROM user_streaks WHERE user_id = ?').get(userId);
   const total = streak?.goals_completed || 0;
 
-  if (!streak) {
-    db.prepare(
-      'INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_goal_date, goals_completed) VALUES (?, 1, 1, ?, 1)'
-    ).run(userId, today);
-  } else {
-    // Consecutive = last completion was the user's local yesterday. Comparing
-    // calendar-date strings makes this DST-proof.
-    const isConsecutive = streak.last_goal_date === yesterdayOf(today);
-    const newStreak = isConsecutive ? streak.current_streak + 1 : 1;
-    const longest   = Math.max(streak.longest_streak, newStreak);
-    db.prepare(
-      'UPDATE user_streaks SET current_streak = ?, longest_streak = ?, last_goal_date = ?, goals_completed = ? WHERE user_id = ?'
-    ).run(newStreak, longest, today, total + 1, userId);
-
-    unlocked.push(...checkCounterMilestones(userId, { goal_streak: newStreak }));
+  // Only the goals counter is touched here. current_streak / longest_streak /
+  // last_goal_date belong to checkDayStreak now — if this function still wrote
+  // them, restoring a caller for Goals would silently start overwriting the day
+  // streak with a goal streak, two different numbers in one column.
+  if (streak) {
+    db.prepare('UPDATE user_streaks SET goals_completed = ? WHERE user_id = ?')
+      .run(total + 1, userId);
+  } else if (db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId)) {
+    db.prepare('INSERT INTO user_streaks (user_id, goals_completed) VALUES (?, 1)').run(userId);
   }
 
   const newTotal = total + 1;

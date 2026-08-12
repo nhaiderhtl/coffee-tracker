@@ -26,10 +26,24 @@ export function useSSE() {
       }
     };
 
+    // Anything that happened while the stream was down is simply gone — SSE has
+    // no replay, and this app no longer polls, so a missed event would leave the
+    // screen wrong until the user navigated. On every open, including each
+    // automatic reconnect, treat the whole cache as stale: the client cannot
+    // know what it missed, so it re-asks. React Query only refetches what is
+    // actually mounted, so the cost is one round of the visible screen's
+    // queries — and it is what makes dropping the polling safe.
+    //
+    // This also covers the first connect, where it is a cheap no-op: those
+    // queries were just fetched and are inside their staleTime.
+    const onOpen = () => { qc.invalidateQueries(); };
+
     es.addEventListener('invalidate', onInvalidate as EventListener);
+    es.addEventListener('open', onOpen);
 
     return () => {
       es.removeEventListener('invalidate', onInvalidate as EventListener);
+      es.removeEventListener('open', onOpen);
       es.close();
     };
   }, [qc, token]);
