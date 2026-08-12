@@ -71,6 +71,14 @@ function unlockBadge(userId, badgeId) {
   return def;
 }
 
+// Badge requirements are declarative data, and these two functions are the only
+// things that read them: this one handles `type: 'achievement'` and
+// checkBadgeForRanking below handles `type: 'ranking'`. Any other type is
+// silently inert — no error, no failing test, the badge simply never unlocks.
+// `challenge_champion` has sat unearnable behind `type: 'challenges_won'` for
+// exactly that reason. When adding a requirement type, add its evaluator here
+// in the same change, and check every `achievementId` exists in
+// data/achievements.js — a typo fails the same silent way.
 function checkBadgesForAchievement(userId, achievementId) {
   const notifs = [];
   for (const badge of BADGES) {
@@ -252,6 +260,13 @@ function checkCoffeeLoop(userId, allEntries, tz) {
   return [];
 }
 
+// 🔴 CURRENTLY UNREACHABLE as of issue #83. This runs only from
+// POST /api/goals/complete, and Stats.tsx was that endpoint's only caller until
+// #83 removed the Goals tab. Nothing in the client calls it now, so everything
+// below is dead in practice: `first_goal_complete`, `goals_10`, the goal_streak
+// counter milestones, and the `on_target` / `goal_getter` badges that hang off
+// them. The code is kept, not deleted, because whether Goals is retired or just
+// rehomed is still open (#17, #74) — restore a caller and this all works again.
 function checkAfterGoalsComplete(userId) {
   const unlocked = [];
   const tz = getUserTz(db, userId);

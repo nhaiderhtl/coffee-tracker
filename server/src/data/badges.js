@@ -100,6 +100,14 @@ const BADGES = [
     secret: false,
     requirement: { type: 'achievement', achievementId: 'combo_3' },
   },
+  // 🔴 UNEARNABLE as of issue #83. Both of these hang off the goal-completion
+  // path, and `first_goal_complete` / `goals_10` are awarded only from
+  // achievements.js's completeGoals, reachable only through
+  // POST /api/goals/complete. Stats.tsx was that endpoint's one caller and #83
+  // removed it, so neither achievement can fire and neither badge can unlock.
+  // Do not "fix" this by deleting them — whether Goals is retired outright or
+  // moved to a new home is an open product decision (see #17, #74). Whoever
+  // settles it owns these two: give them a reachable path or drop them with it.
   {
     id: 'on_target',
     name: 'On Target',
@@ -156,6 +164,16 @@ const BADGES = [
     secret: false,
     requirement: { type: 'ranking', metric: 'cups', position: 1 },
   },
+  // 🔴 UNEARNABLE: nothing evaluates `challenges_won`. achievements.js branches
+  // on 'achievement' (checkBadgesForAchievement) and 'ranking'
+  // (checkBadgeForRanking) and on nothing else, so this requirement is inert and
+  // always has been — the badge has never unlocked for anyone. Long-standing,
+  // not a regression. To make it real, either add a `challenges_won` evaluator
+  // driven off challenge completion, or restate it as
+  // `{ type: 'achievement', achievementId: … }` against a challenge achievement
+  // that is actually awarded — `challenger` below uses `first_challenge` that
+  // way and does work. Deciding what "completed 3 challenges" counts as is the
+  // blocker, not the wiring.
   {
     id: 'challenge_champion',
     name: 'Challenge Champion',
