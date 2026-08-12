@@ -150,6 +150,7 @@ Always theme variables, never hard-coded hex, so light and dark both hold up.
 
 ## Refresh cadence (user-visible)
 
-Notifications and the bell badge update within about a minute, and immediately
-when the window regains focus. (The polling mechanism and its planned move to a
-live connection under #54 are described in notifications.md §7.)
+Notifications and the bell badge update as good as immediately: the server
+pushes an invalidation the moment the row is written (#54), and the window
+regaining focus refetches as well. Nothing polls. See
+[live-data-sse.md](./live-data-sse.md) for the connection itself.

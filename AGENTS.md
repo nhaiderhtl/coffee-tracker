@@ -124,8 +124,13 @@ Endpoints:
   superseded [docs/competitions-elo.md](./docs/competitions-elo.md) still
   describes how every match settled before v2 was scored)
 
+Outside `/api/<area>` there is one more endpoint: **`GET /api/events`**, the SSE
+stream every client holds open. It carries no data, only cache-invalidation
+signals — see [docs/live-data-sse.md](./docs/live-data-sse.md).
+
 Client pages in `client/src/pages/*` map 1:1 to these areas.
-Test suite: `server/src/*.test.js` (run with `bun run test`). Two kinds:
+Test suites: `server/src/*.test.js` and `client/src/**/*.test.ts(x)`, run with
+`bun run test` and `bun run test:client`. Server tests come in two kinds:
 module tests that call the code directly, and `routes.*.test.js`, which mounts
 a router on a real server and drives it over HTTP to cover validation and
 access control.
@@ -145,15 +150,22 @@ cp .env.example .env            # set JWT_SECRET (>= 16 chars), optional PORT
 docker compose up -d --build    # serves / and /api on http://localhost:${PORT:-8080}
 
 # Tests and checks — from the repo root
-bun run test          # server suite (unit + HTTP route tests)
-bun run test:watch    # same, re-running on change
-bun run lint          # client (oxlint)
-bun run build         # client (tsc -b + vite build)
-bun run check         # all of the above, mirroring .github/workflows/pr-checks.yaml
+bun run test            # server suite (unit + HTTP route tests)
+bun run test:watch      # same, re-running on change
+bun run test:client     # client suite (bun test + happy-dom, see client/bunfig.toml)
+bun run typecheck:test  # type-checks the test files (tsconfig.test.json)
+bun run lint            # client (oxlint)
+bun run build           # client (tsc -b + vite build)
+bun run check           # all of the above, mirroring .github/workflows/pr-checks.yaml
 
-# The same scripts exist in server/ if you are already there
+# The same scripts exist in server/ and client/ if you are already there
 cd server && bun run test
 ```
+
+`bun install` inside `client/` can fail on Windows with
+`EPERM … NtSetInformationFile` while a dev server holds `node_modules`. Do not
+kill that server — if the dependencies in `package.json` have not changed, the
+existing `bun.lock` is already correct and needs no regeneration.
 
 ## Session log
 
@@ -239,6 +251,17 @@ name/avatar:
 Badges render as tier-coloured Discord-style discs (colour = rarity, via
 `client/src/rarity.ts`); every badge has its own unique icon. A boxed
 "badge card" is the old look — do not reintroduce it.
+
+**A badge nobody can earn is a bug, and it fails silently.** Requirements in
+`server/src/data/badges.js` are declarative data: only `type: 'achievement'` and
+`type: 'ranking'` have evaluators (in `achievements.js`), any other type is
+inert, and a mistyped `achievementId` resolves to nothing. Neither typecheck nor
+the suite will say a word. When you add or edit a badge, confirm its unlock path
+actually runs. If a path is removed rather than replaced — as the Goals removal
+(#83) did to `goal_getter` — mark the badge `retired: true` instead of deleting
+it: the collection endpoints then hide it from everyone who has not earned it,
+while users who did keep seeing it. Deleting the definition strips a badge from
+people who already hold one.
 
 **Info popover is the profile pages' alone.** Both profile pages (public
 `/u/:username` and your own) pass `withInfo` to `<Profile.Badges>`/`<BadgeRow>`,
@@ -418,6 +441,13 @@ that makes it safe. Do not delete it.
   change *is* the content/meaning of the interaction (e.g. zoom, a drag handle
   actually resizing something) and is explicitly intended — never as a decorative
   add-on. When in doubt, ship it without the scale.
+- **Every endpoint that mutates state must broadcast.** Nothing in this app
+  polls (issue #54), so a write with no push leaves the screen wrong until the
+  user reloads — indefinitely, not for one interval. Adding a `refetchInterval`
+  to fix a stale screen is treating the symptom; the missing `broadcast` is the
+  bug. Read [docs/live-data-sse.md](./docs/live-data-sse.md) before adding a
+  route that writes, and check the key you push is one the client actually uses
+  — a wrong key fails silently.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.

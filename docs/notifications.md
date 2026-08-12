@@ -1,8 +1,8 @@
 # Notification System (issue #32, phase 1)
 
-In-app notification system. Server records events to a `notifications` table;
-the app polls them, shows an unread count on a bell in `AppHeader`, and lists
-history on a `/notifications` page.
+In-app notification system. Server records events to a `notifications` table
+and pushes an invalidation over SSE; the client shows an unread count on a bell
+in `AppHeader` and lists history on a `/notifications` page.
 
 This doc owns the **implementation**: table, migration, emit sites, API, types,
 query-hook config, file paths. How notifications *behave and read* on the
@@ -179,14 +179,21 @@ The read model (no auto-read on open), the swipe-to-read and "mark all read"
 interactions, and the per-type presentation are specified in
 [notifications-client.md](./notifications-client.md).
 
-## 7. Polling is temporary — refactor when #54 lands
+## 7. Delivery is a push, not a poll (#54 landed)
 
-The 60s poll is a stopgap. **Issue #54 (Improve responsiveness of live data)**
-will maintain a live connection (websockets/SSE) for feeds, ranks, matches and
-other reactive data. When #54 lands, the notification poll here should be
-replaced by a push over that connection — the bell updates on server event
-instead of on interval. **This is a known refactor point; revisit sections 6
-(query hook) and 4 (delivery) once #54 ships.**
+The 60s poll this section used to describe is gone. `createNotification`
+broadcasts `['notifications']` to the recipient, so the bell updates on the
+server event rather than on an interval, and `useNotifications` carries no
+`refetchInterval`.
+
+Two consequences worth knowing before changing anything here:
+
+- A notification that is written **without** going through `createNotification`
+  will not reach the bell until the next refetch. Emit through it.
+- The connection, its reconnect behaviour and the rule that every mutating
+  endpoint must broadcast are specced in
+  [live-data-sse.md](./live-data-sse.md). The bell is one consumer of that
+  system, not a mechanism of its own.
 
 ## 8. Retention
 
