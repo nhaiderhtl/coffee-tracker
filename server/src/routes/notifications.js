@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { broadcast } = require('../events');
 
 const router = express.Router();
 
@@ -64,6 +65,8 @@ router.post('/read', requireAuth, (req, res) => {
     ).run(now, req.user.id, ...ids);
   }
 
+  // Keeps the bell count in step across this user's other open tabs.
+  broadcast([['notifications']], [req.user.id]);
   res.json({ ok: true, unread_count: unreadCount(req.user.id) });
 });
 

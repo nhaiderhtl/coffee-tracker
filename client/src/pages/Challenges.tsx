@@ -22,7 +22,8 @@ export function Challenges() {
   const qc = useQueryClient();
 
   const { data: challenges = [], isLoading } = useQuery<Challenge[]>({
-    queryKey: ['challenges'], queryFn: () => api.get('/challenges'), refetchInterval: 60000,
+    // No refetchInterval: joins and completions are pushed over SSE now (#54).
+    queryKey: ['challenges'], queryFn: () => api.get('/challenges'),
   });
 
   const join = useMutation({

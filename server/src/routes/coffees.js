@@ -214,6 +214,9 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async
   // their personal stats (streaks, energy, rankings, stats) may have changed.
   broadcast([['feed']]);
   broadcast([['streaks'], ['energy'], ['stats'], ['rankings']], [req.user.id]);
+  // The casualty counter is global and moves when anyone crosses 400mg, so it
+  // goes to everyone. This is what lets the Stats page drop its 30s poll.
+  broadcast([['casualties']]);
 
   const entry = {
     id, user_id: req.user.id, coffee_id: coffeeId, caffeine_mg: coffee.caffeine,
@@ -230,6 +233,10 @@ router.patch('/entries/:id', requireAuth, (req, res) => {
   if (!entry) return res.status(404).json({ error: 'Entry not found' });
   db.prepare('UPDATE coffee_entries SET logged_at = ? WHERE id = ?').run(timestamp, req.params.id);
   const updated = db.prepare('SELECT * FROM coffee_entries WHERE id = ?').get(req.params.id);
+  // Moving an entry in time re-buckets it: the feed order changes for everyone,
+  // and the author's own totals, streak and energy curve all shift with it.
+  broadcast([['feed']]);
+  broadcast([['streaks'], ['energy'], ['stats'], ['rankings']], [req.user.id]);
   res.json(updated);
 });
 
@@ -242,6 +249,8 @@ router.delete('/entries/:id', requireAuth, (req, res) => {
   // its file is already a recorded variant, so this unlink is a harmless no-op.
   if (entry.image_id) images.deleteImage(entry.image_id);
   if (entry.photo_path) fs.unlink(path.join(UPLOAD_DIR, entry.photo_path), () => {});
+  broadcast([['feed']]);
+  broadcast([['streaks'], ['energy'], ['stats'], ['rankings']], [req.user.id]);
   res.json({ ok: true });
 });
 

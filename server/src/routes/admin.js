@@ -19,8 +19,18 @@ const { isValidPassword } = require('../password');
 const { ID_RE, listCoffeesAdmin, listClasses, getClass } = require('../coffees');
 const { invalidateMatch, MAX_INVALIDATE_DEPTH } = require('../competitions');
 const { matchPayload } = require('../match-view');
+const { broadcast } = require('../events');
 
 const router = express.Router();
+
+// The client caches the coffee catalog and its categories with staleTime:
+// Infinity — they are reference data that only an admin changes. Without a push
+// an edit here stays invisible to every open tab until a reload, which is the
+// whole reason the catalog became data-driven (issue #77). Untargeted: the
+// catalog is the same for everyone.
+function pushCatalog() {
+  broadcast([['coffees'], ['coffee-classes'], ['admin-coffees'], ['admin-coffee-classes']]);
+}
 
 // The columns the admin UI needs. Never exposes password_hash.
 const ADMIN_USER_COLS = 'id, username, avatar, is_admin, is_super_admin, created_at';
@@ -88,6 +98,9 @@ router.post('/users/:id/admin', (req, res) => {
 
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(is_admin ? 1 : 0, target.id);
   const user = db.prepare(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = ?`).get(target.id);
+  // The target's own /auth/me is what gates the admin panel and its nav entry,
+  // so without this they keep the old rights on screen until a reload.
+  broadcast([['me']], [target.id]);
   res.json(user);
 });
 
@@ -179,6 +192,7 @@ router.post('/coffees', (req, res) => {
     'INSERT INTO coffees (id, name, caffeine, icon, class, score_caffeine, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(id, values.name, values.caffeine, values.icon, values.class, values.score_caffeine, max + 1);
 
+  pushCatalog();
   res.status(201).json(db.prepare('SELECT id, name, caffeine, icon, class, score_caffeine, sort_order FROM coffees WHERE id = ?').get(id));
 });
 
@@ -199,6 +213,7 @@ router.patch('/coffees/:id', (req, res) => {
   const setSql = keys.map((k) => `${k} = ?`).join(', ');
   db.prepare(`UPDATE coffees SET ${setSql} WHERE id = ?`).run(...keys.map((k) => values[k]), req.params.id);
 
+  pushCatalog();
   res.json(db.prepare('SELECT id, name, caffeine, icon, class, score_caffeine, sort_order FROM coffees WHERE id = ?').get(req.params.id));
 });
 
@@ -208,6 +223,7 @@ router.delete('/coffees/:id', (req, res) => {
   // Past entries keep their copied caffeine_mg and coffee_id string; only the
   // picker loses the option (see the history note above).
   db.prepare('DELETE FROM coffees WHERE id = ?').run(req.params.id);
+  pushCatalog();
   res.json({ ok: true });
 });
 
@@ -231,6 +247,7 @@ router.post('/coffee-classes', (req, res) => {
 
   const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM coffee_classes').get().m;
   db.prepare('INSERT INTO coffee_classes (id, name, sort_order) VALUES (?, ?, ?)').run(id, name, max + 1);
+  pushCatalog();
   res.status(201).json(getClass(id));
 });
 
@@ -239,6 +256,7 @@ router.patch('/coffee-classes/:id', (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   if (!name) return res.status(400).json({ error: 'name is required' });
   db.prepare('UPDATE coffee_classes SET name = ? WHERE id = ?').run(name, req.params.id);
+  pushCatalog();
   res.json(getClass(req.params.id));
 });
 
@@ -264,6 +282,7 @@ router.post('/coffee-classes/:id/move', (req, res) => {
     swap.run(current.sort_order, neighbour.id);
   });
   tx();
+  pushCatalog();
   res.json(listClasses());
 });
 
@@ -274,6 +293,7 @@ router.delete('/coffee-classes/:id', (req, res) => {
     return res.status(409).json({ error: `In use by ${inUse} ${inUse === 1 ? 'coffee' : 'coffees'} — reassign them first` });
   }
   db.prepare('DELETE FROM coffee_classes WHERE id = ?').run(req.params.id);
+  pushCatalog();
   res.json({ ok: true });
 });
 
@@ -322,7 +342,12 @@ router.post('/matches/:id/invalidate', (req, res) => {
     return res.status(403).json({ error: 'Only the primary admin can invalidate matches' });
   }
   try {
-    res.json(invalidateMatch(req.params.id, Date.now()));
+    const result = invalidateMatch(req.params.id, Date.now());
+    // A replay rewrites the rating ledger from that match forward, so every
+    // player's rating, rank and match history can move — not just the roster of
+    // the match that was invalidated. Push it to everyone.
+    broadcast([['competitions'], ['rankings'], ['admin-matches'], ['user-profile'], ['compare']]);
+    res.json(result);
   } catch (e) {
     const msg = e.message || 'Could not invalidate match';
     res.status(msg === 'Match not found' ? 404 : 400).json({ error: msg });

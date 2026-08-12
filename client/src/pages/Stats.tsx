@@ -30,7 +30,8 @@ function RankingsTab() {
   });
 
   const { data: casualties } = useQuery({
-    queryKey: ['casualties'], queryFn: () => api.get<{ global_count: number; heart_attack_risk: number; disclaimer: string }>('/casualties'), refetchInterval: 30000,
+    // Pushed over SSE when anyone crosses the 400mg line (#54), so no poll.
+    queryKey: ['casualties'], queryFn: () => api.get<{ global_count: number; heart_attack_risk: number; disclaimer: string }>('/casualties'),
   });
   const risk = (casualties as any)?.heart_attack_risk ?? 0;
   const riskColor = risk < 20 ? '#4CAF50' : risk < 45 ? '#FF9800' : risk < 70 ? '#FF5722' : '#E53935';

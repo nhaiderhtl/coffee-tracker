@@ -17,7 +17,10 @@ export function HallOfFame() {
         </button>
       </div>
       <FeedList
-        queryKey={['hall-of-fame']}
+        // Namespaced under 'feed' so the server's ['feed'] invalidate reaches it
+        // by prefix — a bare ['hall-of-fame'] would never be matched, and this
+        // list moves on every like. Same convention as ['feed','saved'].
+        queryKey={['feed', 'hall-of-fame']}
         endpoint="/feed/hall-of-fame"
         emptyIcon="trophy"
         emptyTitle="No legends yet"

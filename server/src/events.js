@@ -24,16 +24,23 @@ function removeClient(userId, res) {
 /**
  * Broadcast an invalidate event.
  * @param {string[][]} keys  React Query key arrays to invalidate on the client.
- * @param {number[]=}  userIds  Target users. Omit to send to everyone connected.
+ * @param {string[]=}  userIds  Target users. Omit to send to everyone connected.
+ * @param {{except?: string}=} opts  `except` skips one user — use it for the
+ *   author of the change, whose UI already applied it optimistically. Without
+ *   this, an action like liking a post would immediately refetch under the
+ *   finger that triggered it.
  */
-function broadcast(keys, userIds) {
+function broadcast(keys, userIds, opts = {}) {
   const payload = `event: invalidate\ndata: ${JSON.stringify({ keys })}\n\n`;
-  const targets = userIds
-    ? userIds.flatMap((id) => [...(clients.get(id) ?? [])])
-    : [...clients.values()].flatMap((set) => [...set]);
+  const entries = userIds
+    ? userIds.map((id) => [id, clients.get(id) ?? []])
+    : [...clients.entries()];
 
-  for (const res of targets) {
-    try { res.write(payload); } catch { /* client gone */ }
+  for (const [userId, set] of entries) {
+    if (opts.except !== undefined && userId === opts.except) continue;
+    for (const res of set) {
+      try { res.write(payload); } catch { /* client gone */ }
+    }
   }
 }
 

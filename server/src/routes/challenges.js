@@ -7,6 +7,7 @@ const {
   checkAfterFirstChallenge,
 } = require('../achievements');
 const { coffeeCount } = require('../coffees');
+const { broadcast } = require('../events');
 
 const router = express.Router();
 
@@ -123,6 +124,7 @@ router.post('/:id/join', requireAuth, (req, res) => {
   // Unlock side effect only — any unlock is persisted as a notification and
   // reaches the client through the bell, not this response (issue #32).
   checkAfterFirstChallenge(req.user.id);
+  broadcast([['challenges']], undefined, { except: req.user.id });
   res.json({ ok: true });
 });
 
@@ -144,6 +146,9 @@ router.get('/:id', requireAuth, (req, res) => {
       db.prepare('UPDATE challenge_participants SET completed = 1 WHERE challenge_id = ? AND user_id = ?').run(challenge.id, p.user_id);
       checkAfterChallengeWin(p.user_id);
     }
+    // A challenge flipping to completed is the one state change here nobody
+    // triggered on purpose — it falls out of whoever happened to open it.
+    broadcast([['challenges'], ['badges'], ['achievements']]);
   } else if (now > endDate && challenge.status === 'active') {
     // Ran out the clock without hitting the target — retire it, no winners.
     db.prepare("UPDATE challenges SET status = 'completed' WHERE id = ?").run(challenge.id);

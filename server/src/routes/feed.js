@@ -4,6 +4,7 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { badgesForMany } = require('../profile');
+const { broadcast } = require('../events');
 
 const router = express.Router();
 
@@ -166,6 +167,10 @@ router.post('/:entryId/like', requireAuth, (req, res) => {
   const { count } = db.prepare(
     'SELECT COUNT(*) AS count FROM post_likes WHERE entry_id = ?'
   ).get(req.params.entryId);
+  // Everyone else's copy of this post now shows a stale count. The liker is
+  // skipped: their list already flipped optimistically and reconciles on the
+  // response, so pushing to them would refetch under their own tap.
+  broadcast([['feed']], undefined, { except: req.user.id });
   res.json({ likes_count: count, liked_by_me: true });
 });
 
@@ -177,6 +182,7 @@ router.delete('/:entryId/like', requireAuth, (req, res) => {
   const { count } = db.prepare(
     'SELECT COUNT(*) AS count FROM post_likes WHERE entry_id = ?'
   ).get(req.params.entryId);
+  broadcast([['feed']], undefined, { except: req.user.id });
   res.json({ likes_count: count, liked_by_me: false });
 });
 
@@ -197,6 +203,8 @@ router.post('/:entryId/bookmark', requireAuth, (req, res) => {
     if (!String(err.code).startsWith('SQLITE_CONSTRAINT')) throw err;
   }
 
+  // Bookmarks are private, so this only syncs the user's other devices.
+  broadcast([['feed']], [req.user.id]);
   res.json({ bookmarked_by_me: true });
 });
 
@@ -205,6 +213,7 @@ router.delete('/:entryId/bookmark', requireAuth, (req, res) => {
     'DELETE FROM post_bookmarks WHERE entry_id = ? AND user_id = ?'
   ).run(req.params.entryId, req.user.id);
 
+  broadcast([['feed']], [req.user.id]);
   res.json({ bookmarked_by_me: false });
 });
 

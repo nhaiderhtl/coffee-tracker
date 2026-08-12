@@ -7,6 +7,7 @@ const multer   = require('multer');
 const db       = require('../db');
 const images   = require('../images');
 const { requireAuth } = require('../middleware/auth');
+const { broadcast } = require('../events');
 const { isValidTz, DEFAULT_TZ } = require('../time');
 const { clampHalfLife } = require('../energy');
 const { isValidPassword } = require('../password');
@@ -35,6 +36,15 @@ function handleUpload(mw) {
 }
 
 const router = express.Router();
+
+// A username, avatar or profile photo is this user's identity, and it is
+// rendered next to them in the feed, on rosters, the leaderboard, compare and
+// their public profile. Changing it makes every one of those stale for everyone
+// else — the actor already has the new value in their own response.
+function pushIdentity(actorId) {
+  broadcast([['feed'], ['competitions'], ['rankings'], ['groups'], ['compare'], ['user-profile']],
+    undefined, { except: actorId });
+}
 
 const USER_COLS = 'id, username, avatar, profile_photo, image_id, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
@@ -186,6 +196,7 @@ router.patch('/me', requireAuth, (req, res) => {
     db.prepare(`UPDATE users SET ${key} = ? WHERE id = ?`).run(value ? 1 : 0, req.user.id);
   }
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
+  pushIdentity(req.user.id);
   res.json(user);
 });
 
@@ -214,6 +225,7 @@ router.patch('/me/photo', requireAuth, handleUpload(profilePhotoUpload.single('p
   if (existing?.profile_photo) images.unlinkPaths([existing.profile_photo]);
 
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
+  pushIdentity(req.user.id);
   res.json(user);
 });
 
@@ -225,6 +237,7 @@ router.delete('/me/photo', requireAuth, (req, res) => {
     if (existing.profile_photo) images.unlinkPaths([existing.profile_photo]);
   }
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
+  pushIdentity(req.user.id);
   res.json(user);
 });
 
@@ -244,6 +257,9 @@ router.delete('/me', requireAuth, (req, res) => {
   images.unlinkPaths(variantPaths);
   images.unlinkPaths(legacyCoffee);
   if (profile_photo) images.unlinkPaths([profile_photo]);
+  // The cascade took this user's posts, match entries and group membership with
+  // them, so everyone else's lists are now showing rows that no longer exist.
+  pushIdentity(req.user.id);
   res.status(204).end();
 });
 

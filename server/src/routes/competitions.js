@@ -7,8 +7,19 @@ const { BASE_RATING, K_BY_MODE } = require('../competition-core');
 const { groupOf, joinDeadline } = require('../competitions');
 const { badgesForMany } = require('../profile');
 const { matchPayload } = require('../match-view');
+const { broadcast } = require('../events');
 
 const router = express.Router();
+
+// A lobby appearing, filling up or emptying changes what every other client's
+// competition screen should show, and who may see a given match is decided by
+// the GET handlers above — not here. So these go out untargeted: the event
+// carries no data, only "refetch /competitions", and each client then gets
+// exactly the matches it is allowed to see. Settlement is pushed separately
+// from competitions.js, where the participant list is already known.
+function pushCompetitions() {
+  broadcast([['competitions']]);
+}
 
 // Modes a user may open themselves. daily/weekly are opened by the ticker on a
 // recurring window and are never created through the API.
@@ -268,6 +279,7 @@ router.post('/', requireAuth, (req, res) => {
       .run(randomUUID(), id, req.user.id, now);
   })();
 
+  pushCompetitions();
   res.status(201).json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(id), { viewerId: req.user.id }) });
 });
 
@@ -294,6 +306,7 @@ router.post('/join-by-code', requireAuth, (req, res) => {
   db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
     .run(randomUUID(), match.id, req.user.id, Date.now());
 
+  pushCompetitions();
   res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id), { viewerId: req.user.id }) });
 });
 
@@ -333,6 +346,7 @@ router.post('/:id/join', requireAuth, (req, res) => {
   db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
     .run(randomUUID(), match.id, req.user.id, Date.now());
 
+  pushCompetitions();
   res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id), { viewerId: req.user.id }) });
 });
 
@@ -366,6 +380,7 @@ router.post('/:id/leave', requireAuth, (req, res) => {
     }
   })();
 
+  pushCompetitions();
   res.json({ ok: true });
 });
 

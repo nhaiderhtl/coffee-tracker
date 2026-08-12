@@ -4,12 +4,22 @@ const { randomUUID, randomInt } = require('crypto');
 const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
+const { broadcast } = require('../events');
 const { isValidTz, getUserTz } = require('../time');
 const { BASE_RATING } = require('../competition-core');
 const { ensureRecurringMatches, groupOf } = require('../competitions');
 const { badgesForMany } = require('../profile');
 
 const router = express.Router();
+
+// Membership changes move people between rosters and can open or close the
+// group's recurring lobbies, so both the group list and the competition screen
+// go stale for everyone — group visibility is decided by the GET handlers, so
+// this is deliberately untargeted. The actor is skipped; their own response
+// already carries the new state.
+function pushGroups(actorId) {
+  broadcast([['groups'], ['competitions']], undefined, { except: actorId });
+}
 
 const NAME_RE = /^[\w][\w '-]{1,30}$/;
 const DESCRIPTION_MAX = 200;
@@ -201,6 +211,9 @@ router.post('/', requireAuth, (req, res) => {
   ensureRecurringMatches(now);
 
   const group = db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(id);
+  // The public group list everyone browses just changed, and ensureRecurringMatches
+  // may have opened lobbies along with it.
+  pushGroups(req.user.id);
   res.status(201).json({ group: publicGroup(group, { includeCode: true }), members: membersOf(id, req.user.id) });
 });
 
@@ -241,6 +254,7 @@ router.post('/join', requireAuth, joinLimiter, (req, res) => {
   // which its recurring matches start existing. Don't wait for the next tick.
   ensureRecurringMatches(now);
 
+  pushGroups(req.user.id);
   res.json({
     group: publicGroup(group, { includeCode: true }),
     members: membersOf(group.id, req.user.id),
@@ -261,6 +275,7 @@ router.post('/leave', requireAuth, (req, res) => {
     handleDeparture(group, req.user.id);
   })();
 
+  pushGroups(req.user.id);
   res.json({ ok: true, left_group: { id: group.id, name: group.name } });
 });
 
@@ -339,6 +354,7 @@ router.patch('/:id', requireAuth, (req, res) => {
   // they were created with (their scores are already being measured against
   // it); the new zone applies from the next period.
   const updated = db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(group.id);
+  pushGroups(req.user.id);
   res.json({ group: publicGroup(updated, { includeCode: true }), members: membersOf(group.id, req.user.id) });
 });
 
