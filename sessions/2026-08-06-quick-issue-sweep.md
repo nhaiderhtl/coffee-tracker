@@ -6,9 +6,13 @@ topics: [issue-79-clickable-logo, issue-63-challenges-off-compete, issue-36-priv
 
 ## Environment gotcha: no local JS runtime
 
-This machine has **no `bun` and no `node` on PATH**, and neither `client/` nor
-`server/` has `node_modules`. `bun run test` / `lint` / `build` cannot be run
-locally here. Verification came from **CI on the PR**
+**Outdated as of 2026-08-12 — bun 1.3.14 is on PATH and both `node_modules`
+trees exist; `bun run check` runs locally. See
+`sessions/2026-08-12-backlog-consolidation.md`.**
+
+At the time of writing this machine had **no `bun` and no `node` on PATH**, and
+neither `client/` nor `server/` had `node_modules`. `bun run test` / `lint` /
+`build` could not be run locally. Verification came from **CI on the PR**
 (`.github/workflows/pr-checks.yaml`) plus manual grepping that every referenced
 symbol/token resolves (VALUES.md rule 0). Push early and read the CI run rather
 than assuming a green local.
