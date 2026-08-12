@@ -1,5 +1,5 @@
 ---
-topics: [consolidated-pr, migration-number-collision, admin-panel-entry-point, pr-head-recovery, local-bun-available]
+topics: [consolidated-pr, migration-number-collision, admin-panel-entry-point, pr-head-recovery, local-bun-available, goals-removal-orphans-badges, unearnable-badges]
 ---
 
 # Backlog consolidation into one PR (2026-08-12)
@@ -55,15 +55,41 @@ rather than merging both, which would have collided on every file.
 
 ## Correction: bun IS on PATH here
 
-`sessions/2026-08-06-quick-issue-sweep.md` states this machine has no `bun` and
-no `node`, and that verification had to come from CI. That is no longer true —
-`bun 1.3.14` is installed and both `node_modules` trees exist. The full
-`bun run check` runs locally; this session's did. Ignore that note.
+`2026-08-06-quick-issue-sweep.md` says this machine has no `bun`/`node` and that
+only CI can verify. No longer true — bun 1.3.14 and both `node_modules` trees
+exist, and `bun run check` runs locally.
 
-One real gotcha remains: `bun install` in `client/` can fail with
-`EPERM ... NtSetInformationFile` when the dev server holds `node_modules`. Don't
-kill it — if `package.json` deps are unchanged versus main, the branch's
-existing `bun.lock` is already correct and needs no regeneration.
+Remaining gotcha: `bun install` in `client/` can fail `EPERM
+NtSetInformationFile` while the dev server holds `node_modules`. Don't kill it —
+if deps are unchanged versus main, the branch's `bun.lock` is already correct.
+
+## 🔴 Removing Goals orphans the goal achievements and badges
+
+`Stats.tsx` held the **only** caller of `POST /goals/complete` (see it on
+`origin/main`). Issue #83 removes that tab, so nothing can reach the endpoint
+any more — and `achievements.js` awards `first_goal_complete`, `goals_10` and
+the whole `goal_streak` counter chain *exclusively* from that path. Those, plus
+the `goal_getter` badge, are now permanently unearnable.
+
+Issue #84 makes it sharper: it adds a **new** badge `on_target`, requirement
+`{ type: 'achievement', achievementId: 'first_goal_complete' }` — unearnable on
+the day it ships. The two issues contradict each other and both are in the same
+PR. Left for the owner to decide: does "Remove Goals" mean delete the feature
+(then the goal achievements/badges go too, and #17/#74 need rethinking), or
+just move it off Stats? Do not resolve this by quietly deleting badges.
+
+## A requirement type with no evaluator
+
+`challenge_champion` declares `requirement: { type: 'challenges_won', count: 3 }`,
+but `achievements.js` only handles `type === 'achievement'` and
+`type === 'ranking'`. Nothing evaluates `challenges_won`, so the badge has never
+been earnable. Pre-existing on main, not introduced here.
+
+Worth knowing generally: badge requirements are **declarative data**, so a typo
+or an unhandled type fails silently — no import error, no failing test, nothing
+in typecheck. When touching `data/badges.js`, check that every `achievementId`
+exists in `data/achievements.js` and that the `type` has a branch in
+`achievements.js`.
 
 ## Label claims still unavailable
 
