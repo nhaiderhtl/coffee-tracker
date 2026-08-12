@@ -33,6 +33,7 @@ previously-tried drink stops showing any selection feedback when tapped.
 
 ## Environment
 
-No `bun`/`node` on PATH and no `node_modules` on this machine — `bun run check`
-cannot run locally; CI on the PR is the verification. See the sweep file for the
-fork-based PR workflow (no push rights on the upstream repo).
+**Outdated as of 2026-08-12: bun 1.3.14 is on PATH and `bun run check` runs
+locally.** At the time of writing there was no `bun`/`node` and no
+`node_modules` here, so CI on the PR was the only verification. The fork-based
+PR workflow (no push rights upstream) still applies — see the sweep file.
