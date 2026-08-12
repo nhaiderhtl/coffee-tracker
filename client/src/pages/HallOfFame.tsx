@@ -21,7 +21,7 @@ export function HallOfFame() {
         endpoint="/feed/hall-of-fame"
         emptyIcon="trophy"
         emptyTitle="No legends yet"
-        emptySub="Posts from the last 30 days that earn enough likes appear here. Start liking!"
+        emptySub="The most-liked posts of the last 30 days land here."
       />
     </div>
   );

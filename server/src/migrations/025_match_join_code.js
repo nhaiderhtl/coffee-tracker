@@ -1,4 +1,4 @@
-// 023 — add join_code to matches for private user-created lobbies (issue #36).
+// 025 — add join_code to matches for private user-created lobbies (issue #36).
 //
 // User-created global matches (1v1, ondemand) are now private by default: a
 // random 6-char code is generated at creation time. Only the creator sees the

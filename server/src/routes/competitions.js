@@ -157,6 +157,19 @@ router.get('/leaderboard', requireAuth, (req, res) => {
 // the rating is one global number and every settlement moved it. It carries the
 // before/after/delta the graph is drawn from; the client windows it into
 // 30d/7d/24h rather than the server pre-slicing, so one payload feeds all three.
+// A join code unique among the open matches join-by-code can resolve. Bounded
+// retries: the space is 16^6, so a second collision in a row is not a case
+// worth looping on forever — falling through to the last roll keeps creation
+// from hanging, and the lookup itself stays correct either way.
+function newJoinCode() {
+  for (let i = 0; i < 5; i += 1) {
+    const code = randomUUID().slice(0, 6).toUpperCase();
+    const clash = db.prepare("SELECT 1 FROM matches WHERE join_code = ? AND state = 'open'").get(code);
+    if (!clash) return code;
+  }
+  return randomUUID().slice(0, 6).toUpperCase();
+}
+
 // Cancelled matches are excluded — they moved nobody's rating, so they are not
 // history in the sense this pill means.
 //
@@ -199,7 +212,8 @@ router.get('/history', requireAuth, (req, res) => {
 
 // POST /api/competitions — open a user-created match. Without `global: true` it
 // lives in the caller's group (members-only); with it the match belongs to no
-// group and anyone may join (issue #35). Either way it is a user-created lobby.
+// group (issue #35) but is private by default — it carries a join code and only
+// the creator sees it (issue #36). Either way it is a user-created lobby.
 router.post('/', requireAuth, (req, res) => {
   const { mode, title = null, scope_start, scope_end } = req.body || {};
   const isGlobal = (req.body && req.body.global) === true;
@@ -231,7 +245,13 @@ router.post('/', requireAuth, (req, res) => {
   // Global user-created matches are private by default: a 6-char code is
   // generated and only returned to the creator. Group matches stay members-only
   // and don't need a code.
-  const joinCode = isGlobal ? randomUUID().slice(0, 6).toUpperCase() : null;
+  //
+  // The code is only 6 hex chars, and join-by-code resolves it with a plain
+  // lookup over open matches — so a duplicate would silently drop the joiner
+  // into someone else's lobby. Re-roll until it is unique among the matches
+  // that lookup can reach. Settled/cancelled rows keep their old codes and are
+  // deliberately not considered: they are unreachable by code.
+  const joinCode = isGlobal ? newJoinCode() : null;
 
   // `team_size` and `side` stay in the schema because settled team matches hold
   // real data in them, but team mode is gone (v2) and a new match never fills
