@@ -106,3 +106,17 @@ for project values; AGENTS.md covers architecture and workflows.
    missing/weak `JWT_SECRET` exits (`server/src/index.js`); a failed migration
    exits; compose requires `JWT_SECRET` via `${JWT_SECRET:?...}`. Preserve this —
    never silently fall back to insecure or half-migrated states.
+
+8. **Live data is pushed, never polled.** Shared state reaches the client over
+   the SSE stream (`GET /api/events`), which carries cache-invalidation signals
+   only — never data, so visibility stays decided by the GET handlers. There is
+   no `refetchInterval` in the client and none should return.
+   - **Every endpoint that mutates state broadcasts.** Because nothing polls, a
+     write with no push leaves the screen wrong until a reload — indefinitely,
+     not for one interval. A stale screen is a missing `broadcast`, and adding a
+     poll to paper over it is the wrong fix.
+   - **A reconnect re-asks rather than replays.** SSE has no backlog, so the
+     client invalidates its whole cache on every stream open. Never narrow that
+     to a subset: what could have changed during a gap is everything.
+   - Details and the rules for adding a push:
+     [docs/live-data-sse.md](./docs/live-data-sse.md).
